@@ -63,17 +63,18 @@ a { color: inherit; }
 .btn.sel { background: var(--paper); box-shadow: inset 0 1px 2px rgba(0,0,0,.08); }
 
 .panes { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; overflow: auto; padding-bottom: 46px; }
-.pane { padding: 22px 28px 20px; display: flex; flex-direction: column; position: relative; overflow: clip; }
+.pane { padding: 22px 28px 20px; display: flex; flex-direction: column; position: relative; overflow: clip; min-width: 0; }
 .pane.busy::before { content: ''; position: absolute; top: 0; left: -30%; width: 30%; height: 2px; background: var(--ink); animation: stripe 1.4s ease-in-out infinite; }
 @keyframes stripe { to { left: 100%; } }
 .pane.drag::after { content: '+ Add'; position: absolute; top: 20px; right: 28px; font-weight: 600; color: var(--person); }
+.pane.drag .ph .btn { visibility: hidden; }
 .pane + .pane { border-left: 1px solid var(--rule); }
 .pane.drag { background: var(--person-bg); }
-.ph { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+.ph { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 14px; }
 .ph h2 { margin: 0; font-size: 15px; font-weight: 600; }
 .ph .c { font-size: 13px; color: var(--ink-3); }
 .ph .btn { margin-left: auto; padding: 4px 10px; font-size: 12px; }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 10px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(158px, 100%), 1fr)); gap: 10px; }
 .tile { position: relative; background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r1); padding: 11px 12px 10px; min-height: 96px; display: flex; flex-direction: column; gap: 4px; cursor: pointer; text-align: left; }
 .tile.on, .tile.drag { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
 .ext { font: 500 10px/1 var(--mono); letter-spacing: .04em; color: var(--ink-3); display: flex; justify-content: space-between; align-items: baseline; }
@@ -117,9 +118,9 @@ a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: 
 .pvb img { max-width: 100%; display: block; margin: 12px auto; }
 .sh { border-collapse: collapse; font: 12px/1.3 var(--mono); }
 .sh th, .sh td { border: 1px solid var(--rule); padding: 3px 6px; white-space: nowrap; }
-.sh th { position: sticky; top: 0; background: var(--paper); color: var(--ink-3); font-weight: 500; z-index: 1; }
-.sh th:first-child { left: 0; z-index: 2; }
-.sh td.rn { position: sticky; left: 0; background: var(--paper); color: var(--ink-3); text-align: right; }
+.sh th { position: sticky; top: 0; background: var(--paper); color: var(--ink-3); font-weight: 500; z-index: 2; }
+.sh th:first-child { left: 0; z-index: 3; }
+.sh td.rn { position: sticky; left: 0; z-index: 1; background: var(--paper); color: var(--ink-3); text-align: right; }
 .sh td.num { text-align: right; }
 .sh td.fx { color: var(--ink-3); font-style: italic; }
 .sh td.chg { background: #fdf0c4; cursor: pointer; }
@@ -312,7 +313,7 @@ async function refresh() {
   [tree, cur, data, shown] = [t, next, d, path];
   if (st) [steps, stepsKey] = [st, key];
   const done = data && lastDone();
-  if (done && was !== undefined && done.seq > was) toast(`Run ${done.run} finished${done.summary ? ': ' + done.summary : ''}`, 'ok');
+  if (done && was !== undefined && done.seq > was) toast(done.error ? `Run ${done.run} failed: ${done.error}` : `Run ${done.run} finished${done.summary ? ': ' + done.summary : ''}`, done.error ? '' : 'ok');
   if (data) localStorage[`rev:${path}`] = data.workspace.rev;
   render();
 }
@@ -463,9 +464,10 @@ function renderAdv() {
   $('#adv').hidden = !data;
   if (!data) return;
   $('#compose').hidden = data.workspace.status !== 'open';
+  $('#interrupt').disabled = !data.run;
   const d = lastDone();
   const cost = data.log.reduce((t, e) => t + (e.cost ?? 0), 0) + (data.run?.cost ?? 0);
-  const s = (data.run ? `Run ${data.run.n} running` : d ? `Run ${d.run} finished ${hhmm(d.at)}${d.summary ? ' · ' + d.summary : ''}` : 'No runs yet') + (cost ? ` · ${usd(cost)} so far` : '');
+  const s = (data.run ? `Run ${data.run.n} running` : d ? `Run ${d.run} ${d.error ? 'failed' : 'finished'} ${hhmm(d.at)}${d.error ?? d.summary ? ' · ' + (d.error ?? d.summary) : ''}` : 'No runs yet') + (cost ? ` · ${usd(cost)} so far` : '');
   $('#advbar').innerHTML = `<span class="t">Advanced</span><span class="s">${esc(s)}</span><span class="r">${ui.adv ? 'Hide steps' : 'Show steps'}</span>`;
   if (!ui.adv) return;
   const trace = $('#trace'), atEnd = trace.scrollTop + trace.clientHeight >= trace.scrollHeight - 30;
@@ -568,9 +570,9 @@ function placeCard() {
   const card = $('#card'), t = !card.hidden && document.querySelector(`.tile[data-item="${CSS.escape(openItem)}"]`);
   if (!t || innerWidth <= 800) return;
   const r = t.getBoundingClientRect(), w = card.offsetWidth, ch = card.offsetHeight;
-  const right = r.right + 10 + w < innerWidth;
-  card.style.left = (right ? r.right + 10 : Math.max(8, Math.min(r.left, innerWidth - w - 8))) + 'px';
-  card.style.top = Math.max(8, Math.min(right ? r.top : r.bottom + 8, innerHeight - ch - 8)) + 'px';
+  const right = r.right + 10 + w < innerWidth, left = !right && r.left - 10 - w >= 8;
+  card.style.left = (right ? r.right + 10 : left ? r.left - 10 - w : Math.max(8, Math.min(r.left, innerWidth - w - 8))) + 'px';
+  card.style.top = Math.max(8, Math.min(right || left ? r.top : r.bottom + 8, innerHeight - ch - 8)) + 'px';
 }
 
 const colName = c => (c >= 26 ? colName(Math.floor(c / 26) - 1) : '') + String.fromCharCode(65 + c % 26);
@@ -588,9 +590,10 @@ function sheetTable(s, first) {
     if (n.options && questionState(n) === null) asks.add(key);
   }
   const old = pv.cmp && (pv.old.find(o => o.name === s.name) ?? pv.old[pv.sheets.indexOf(s)]);
-  const width = Math.max(0, ...s.rows.map(r => r.length));
+  const rows = Array.from({ length: Math.max(s.rows.length, old?.rows.length ?? 0) }, (_, r) => s.rows[r] ?? []);
+  const width = Math.max(0, ...rows.map(r => r.length), ...(old?.rows ?? []).map(r => r.length));
   let h = `<table class="sh"><tr><th></th>${Array.from({ length: width }, (_, c) => `<th>${colName(c)}</th>`).join('')}</tr>`;
-  s.rows.forEach((row, r) => {
+  rows.forEach((row, r) => {
     h += `<tr><td class="rn">${r + 1}</td>`;
     for (let c = 0; c < width; c++) {
       const v = row[c], was = old?.rows[r]?.[c] ?? null;
@@ -630,9 +633,16 @@ function renderPv() {
 }
 
 async function preview(path, item) {
-  const p = pv = { title: fname(path), path, notes: item?.notes ?? [], sheet: 0, image: /\.(png|jpe?g|gif|webp|svg)$/i.test(path), was: item && data.log.findLast(e => e.op === 'point' && e.item === item.id && e.file === path)?.was, loading: /\.(xlsx|xlsm|xls|csv|eml)$/i.test(path) };
+  const sheet = /\.(xlsx|xlsm|xls|csv|eml)$/i.test(path), text = /\.(md|txt|json|py|sql|log)$/i.test(path);
+  const p = pv = { title: fname(path), path, notes: item?.notes ?? [], sheet: 0, image: /\.(png|jpe?g|gif|webp|svg)$/i.test(path), was: item && data.log.findLast(e => e.op === 'point' && e.item === item.id && e.file === path)?.was, md: /\.md$/i.test(path), loading: sheet || text };
   renderPv();
-  if (p.loading) await api(fileUrl(path, 'preview')).then(r => Object.assign(p, r)).finally(() => { p.loading = false; if (pv === p) renderPv(); });
+  try {
+    if (sheet) Object.assign(p, await api(fileUrl(path, 'preview')));
+    if (text) p.text = await (await fetch(fileUrl(path))).text();
+  } finally {
+    p.loading = false;
+    if (pv === p) renderPv();
+  }
 }
 
 async function showProcess() {
@@ -646,7 +656,7 @@ async function showProcess() {
 }
 
 async function upload(files, pane, onto) {
-  const by = who(), path = instPath(), mine = files.map(f => ({ f, pane, path, pct: 0 }));
+  const by = who(), path = instPath(), mine = files.map(f => ({ f, pane, path, pct: 0 })), before = new Set(data.workspace.items.map(i => i.file));
   uploads.push(...mine);
   renderPanes();
   for (const u of mine) {
@@ -661,13 +671,18 @@ async function upload(files, pane, onto) {
     uploads = uploads.filter(x => x !== u);
   }
   await refresh();
-  markSeen(data.workspace.items.filter(i => files.some(f => i.file?.endsWith('/' + f.name))));
+  if (shown !== path) return;
+  markSeen(data.workspace.items.filter(i => i.file?.startsWith('upload/') && !before.has(i.file)));
+  renderPanes();
 }
 
 document.addEventListener('click', async ev => {
   if (!ev.target.closest('#side, [data-act=menu]') || ev.target.closest('#side a')) $('#side').classList.remove('open');
   const sum = ev.target.closest('#trace summary');
-  if (sum) return void folds.set(sum.parentElement.dataset.key, !sum.parentElement.open);
+  if (sum) {
+    folds.set(sum.parentElement.dataset.key, !sum.parentElement.open);
+    return void drawn.set($('#trace'), traceHtml());
+  }
   const el = ev.target.closest('[data-act], .tile, #advbar');
   if (!el) {
     if (!ev.target.closest('#card, #pv')) { openItem = null; renderCard(); renderPanes(); }
@@ -682,9 +697,9 @@ document.addEventListener('click', async ev => {
   }
   const act = el.dataset.act;
   if (act === 'menu') $('#side').classList.toggle('open');
-  if (act === 'log') { ui.log = !ui.log; renderLog(); renderBar(); }
+  if (act === 'log') { ui.log = !ui.log; renderLog(); renderBar(); placeCard(); }
   if (act === 'uncard') { openItem = null; renderCard(); renderPanes(); }
-  if (act === 'opencard') { openItem = el.dataset.item; renderPanes(); renderCard(); }
+  if (act === 'opencard') { openItem = el.dataset.item; markSeen(data.workspace.items.filter(i => i.id === openItem)); renderPanes(); renderCard(); }
   if (act === 'preview') await preview(el.dataset.file, data.workspace.items.find(i => i.id === el.dataset.item));
   if (act === 'process') await showProcess();
   if (act === 'unpv') { pv = null; renderPv(); }
@@ -790,11 +805,23 @@ addEventListener('dragover', e => { if (!e.defaultPrevented) { e.preventDefault(
 addEventListener('drop', e => e.preventDefault());
 $('#panes').addEventListener('scroll', placeCard);
 
-addEventListener('hashchange', () => { openItem = null; pv = null; folds.clear(); prevSigs = {}; renderPv(); $('#side').classList.remove('open'); refresh(); });
+addEventListener('hashchange', () => {
+  openItem = null; pv = null; folds.clear(); prevSigs = {};
+  $('#steer').value = '';
+  $('#panes').scrollTop = $('#log').scrollTop = 0;
+  $('#trace').scrollTop = $('#trace').scrollHeight;
+  renderPv();
+  $('#side').classList.remove('open');
+  refresh();
+});
 addEventListener('resize', placeCard);
 addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
-  if (pv) { pv = null; renderPv(); } else if (openItem) { openItem = null; renderCard(); renderPanes(); } else if (ui.adv) { ui.adv = false; renderAdv(); }
+  if (pv) { pv = null; renderPv(); }
+  else if ($('#side').classList.contains('open')) $('#side').classList.remove('open');
+  else if (openItem) { openItem = null; renderCard(); renderPanes(); }
+  else if (ui.log) { ui.log = false; renderLog(); renderBar(); }
+  else if (ui.adv) { ui.adv = false; renderAdv(); }
 });
 refresh();
 let polling = false;
