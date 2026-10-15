@@ -107,7 +107,7 @@ function finish(a: Active, aborted: boolean, error?: string) {
   a.inst.append('server', 'done', { run: a.n, aborted, seen: a.seen, cost: +a.cost.toFixed(4), summary: a.inst.doc.summary ?? null, ...(error && { error }) });
   if (!a.run) return; // it never started, as with a missing API key: wait for the next person action rather than retry at once
   if (!a.interrupted && pending(a.inst, a.seen).length) return void start(a.inst);
-  const next = instances(series).find(i => i.doc.status === 'open' && pending(i, seenBefore(i)).length);
+  const next = instances(series).find(i => i.doc.status === 'open' && !(a.interrupted && i.dir === a.inst.dir) && pending(i, seenBefore(i)).length);
   if (next) start(next);
 }
 

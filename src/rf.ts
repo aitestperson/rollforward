@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 
-const [cmd, arg] = process.argv.slice(2);
+const [cmd, ...args] = process.argv.slice(2);
+const arg = args.join(' ');
 const headers = { authorization: `Bearer ${process.env.RF_TOKEN}` };
 const url = `${process.env.RF_URL}/agent`;
 

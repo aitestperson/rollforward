@@ -26,7 +26,7 @@ export async function startRun(o: { seriesDir: string; instanceDir: string; env:
   const settled = new Promise<boolean>(resolve => client.onEvent(e => e.type === 'agent_settled' && resolve(e.aborted)));
   client.onEvent(o.onEvent);
   await client.start();
-  await client.prompt(o.message);
+  await client.prompt(o.message).catch(async e => { await client.stop(); throw e; });
   return {
     steer: text => client.steer(text),
     interrupt: async () => { await client.clearQueue(); await client.abort(); },

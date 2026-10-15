@@ -500,7 +500,7 @@ function stepHtml(s, i) {
 
 function groupHtml(g, live) {
   if (g.length === 1) return stepHtml(...g[0]);
-  const counts = Object.entries(Object.groupBy(g, ([s]) => s.kind)).map(([k, xs]) => `${(VERB[k] ?? k).toLowerCase()} ${xs.length} ${NOUN[k] ?? 'call'}${xs.length > 1 ? 's' : ''}`).join(', ');
+  const counts = Object.entries(Object.groupBy(g, ([s]) => s.kind)).map(([k, xs]) => `${esc(VERB[k] ?? k).toLowerCase()} ${xs.length} ${NOUN[k] ?? 'call'}${xs.length > 1 ? 's' : ''}`).join(', ');
   const bad = g.filter(([s]) => s.error).length;
   const head = counts[0].toUpperCase() + counts.slice(1) + (bad ? ` · <span class="bad">${bad} failed</span>` : '') + (live ? ' <span class="spin"></span>' : '');
   return fold(`g${g[0][1]}`, live, head, g.map(x => stepHtml(...x)).join(''));
@@ -641,19 +641,19 @@ async function upload(files, pane, onto) {
   const by = who();
   uploads = files.map(f => ({ f, pane, pct: 0 }));
   renderPanes();
-  try {
-    for (const u of [...uploads]) await new Promise((ok, fail) => {
+  for (const u of [...uploads]) {
+    await new Promise((ok, fail) => {
       const x = new XMLHttpRequest();
       x.open('POST', `${instPath()}/upload?by=${enc(by)}&pane=${pane}&name=${enc(u.f.name)}${onto ? '&onto=' + enc(onto) : ''}`);
       x.upload.onprogress = e => { u.pct = 100 * e.loaded / e.total; renderPanes(); };
       x.onload = () => (x.status < 300 ? ok() : fail(new Error(x.responseText)));
       x.onerror = () => fail(new Error(`${u.f.name} didn't upload`));
       x.send(u.f);
-    }).then(() => { uploads = uploads.filter(x => x !== u); });
-  } catch (e) { toast(e.message); }
-  uploads = [];
+    }).catch(e => toast(e.message));
+    uploads = uploads.filter(x => x !== u);
+  }
   await refresh();
-  markSeen(data.workspace.items);
+  markSeen(data.workspace.items.filter(i => files.some(f => i.file?.endsWith('/' + f.name))));
 }
 
 document.addEventListener('click', async ev => {
