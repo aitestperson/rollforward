@@ -177,6 +177,7 @@ a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: 
 .trace .bad { color: var(--note); }
 .spin { display: inline-block; width: 8px; height: 8px; border: 2px solid var(--rule-2); border-top-color: var(--ink); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.compose[hidden] { display: none; }
 .compose { border-top: 1px solid var(--rule); background: var(--sheet); padding: 10px 28px 14px; display: flex; gap: 8px; }
 .compose input { flex: 1; min-width: 0; background: var(--sheet); border: 1px solid var(--rule-2); border-radius: var(--r1); padding: 8px 10px; font: inherit; }
 
@@ -456,6 +457,7 @@ function renderAdv() {
   $('#adv').className = 'adv' + (ui.adv ? ' open' : '');
   $('#adv').hidden = !data;
   if (!data) return;
+  $('#compose').hidden = data.workspace.status !== 'open';
   const d = lastDone();
   const cost = data.log.reduce((t, e) => t + (e.cost ?? 0), 0);
   const s = (data.run ? `Run ${data.run.n} running` : d ? `Run ${d.run} finished ${hhmm(d.at)}${d.summary ? ' · ' + d.summary : ''}` : 'No runs yet') + (cost ? ` · ${usd(cost)} so far` : '');

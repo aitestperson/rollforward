@@ -9,9 +9,11 @@ Recurring tasks, files in and files out. People drop this period's input files i
 - **Series can share.** A series can let other series read it, one way.
 - **Everything is files on disk.** Each instance has `upload/` (people's files), `working/` (the agent's), `workspace.json` (what the screen shows) and `log.jsonl` (every event).
 
-| Notes and questions | Preview with noted cells | Phone |
-|---|---|---|
-| ![Notes](docs/screenshots/notes.png) | ![Preview](docs/screenshots/preview.png) | ![Phone](docs/screenshots/phone.png) |
+| A tile's notes | Preview, compared with the file it replaced |
+|---|---|
+| ![Notes](docs/screenshots/notes.png) | ![Preview](docs/screenshots/preview.png) |
+| **Advanced: the agent's steps** | **Phone** |
+| ![Advanced](docs/screenshots/advanced.png) | ![Phone](docs/screenshots/phone.png) |
 
 ## Try it
 
