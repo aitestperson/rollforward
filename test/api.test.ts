@@ -2,7 +2,7 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -142,6 +142,9 @@ test('series settings write series.json; a rename moves the folder and rewrites 
   assert.equal((await put(series, { name: renamed, visible_to: [monthly] })).status, 200);
   assert.ok(existsSync(join(root, 'larkfield', renamed, '2026-08-30')));
   assert.ok(!existsSync(join(root, 'larkfield', series)));
+  const sessions = globSync('*/session/*.jsonl', { cwd: join(root, 'larkfield', renamed) });
+  assert.ok(sessions.length);
+  for (const f of sessions) assert.equal(JSON.parse(readFileSync(join(root, 'larkfield', renamed, f), 'utf8').split('\n')[0]).cwd, join(root, 'larkfield', renamed), 'Pi finds a session only under the folder it recorded');
   assert.deepEqual((await shown(monthly)).visible_to, [renamed]);
   assert.deepEqual((await shown(monthly)).reads, [renamed]);
 

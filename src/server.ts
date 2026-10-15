@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, globSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -230,8 +230,13 @@ async function people(req: IncomingMessage, res: ServerResponse, url: URL) {
         renameSync(p + '.tmp', p);
       }
       if (to !== series) {
-        renameSync(seriesDir, join(clientDir, to));
+        const dir = resolve(clientDir, to);
+        renameSync(seriesDir, dir);
         forget(seriesDir);
+        for (const f of globSync('*/session/*.jsonl', { cwd: dir })) {
+          const text = readFileSync(join(dir, f), 'utf8'), nl = text.indexOf('\n');
+          writeFileSync(join(dir, f), JSON.stringify({ ...JSON.parse(text.slice(0, nl)), cwd: dir }) + text.slice(nl));
+        }
       }
       return send(res, 200, 'ok');
     }
