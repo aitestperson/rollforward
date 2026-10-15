@@ -8,7 +8,7 @@ formerly uploaded files: sheet Detail, SKU..Last sale. Prints as_of, rows, total
 import datetime as dt, os, sqlite3, sys
 import openpyxl
 
-DB = "/home/spoj/src/rollforward/demo/run/data-sources/warehouse.sqlite"
+DB = "/data-sources/warehouse.sqlite"
 inst = sys.argv[1].rstrip("/")
 db = sys.argv[2] if len(sys.argv) > 2 else DB
 week_end = os.path.basename(os.path.abspath(inst))

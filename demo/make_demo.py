@@ -7,7 +7,8 @@ Weeks to 07-26 are examples. 08-02 is a plain forward week. 08-09 has traps: a w
 the card file arriving late, and the reviewer raising the availability block to 750,000, answered as a standing rule.
 From 08-16 the inventory comes from a warehouse database, the lender's loan activity by email, and one customer is billed
 in EUR at the ECB reference rate. 08-23's email arrives late. 08-30's warehouse snapshot is stale, and a lender email
-raises one customer's concentration limit for that week only.
+raises one customer's concentration limit for that week only. 09-06 is the open week a person drops two files into: its loan
+email is dated Tuesday, as Monday 09-07 is Labor Day.
 """
 import csv, datetime as dt, json, random, sys, urllib.request
 from email.message import EmailMessage
@@ -15,8 +16,8 @@ from pathlib import Path
 from openpyxl import Workbook
 
 OUT = Path(sys.argv[1])
-WEEKS = ['2026-07-05', '2026-07-12', '2026-07-19', '2026-07-26', '2026-08-02', '2026-08-09', '2026-08-16', '2026-08-23', '2026-08-30']
-TRAP, SOURCED, STALE = '2026-08-09', '2026-08-16', '2026-08-30'
+WEEKS = ['2026-07-05', '2026-07-12', '2026-07-19', '2026-07-26', '2026-08-02', '2026-08-09', '2026-08-16', '2026-08-23', '2026-08-30', '2026-09-06']
+TRAP, SOURCED, STALE, LABOR_DAY_WEEK = '2026-08-09', '2026-08-16', '2026-08-30', '2026-09-06'
 CUSTOMERS = ['Ashgrove Home', 'Bellweather Kitchen', 'Cobalt & Clay', 'Dunmore Interiors', 'Eastbay Living', 'Fernhill Supply',
              'Glenrock Home Centers', 'Hollis & Pine', 'Ironbridge Hardware', 'Jasper Lane', 'Keystone Kitchens', 'Linden Hall',
              'Marlow Mercantile', 'Newfield Home', 'Orchard & Oak', 'Pembrook Stores', 'Quarry Street', 'Redfern Living',
@@ -26,7 +27,7 @@ BUCKETS = ['Current', '1-30', '31-60', '61-90', '91-120', '120+']
 CATEGORIES = ['Cookware', 'Bakeware', 'Cutlery', 'Tabletop', 'Storage', 'Small appliances', 'Linens', 'Lighting']
 PROCESSORS = ['Amex', 'Visa/MC', 'PayPal', 'Shop Pay']
 AR_RATE, CARD_RATE, INV_RATE, CONC, SLOW_DAYS, BLOCK, FACILITY = 0.80, 0.90, 0.50, 0.25, 270, 500_000, 30_000_000
-ECB = 'https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?startPeriod=2026-08-01&endPeriod=2026-08-31&format=csvdata'
+ECB = 'https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?startPeriod=2026-08-01&endPeriod=2026-09-30&format=csvdata'
 
 with urllib.request.urlopen(ECB) as r:
     ECB_RATES = {row['TIME_PERIOD']: float(row['OBS_VALUE']) for row in csv.DictReader(r.read().decode().splitlines())}
@@ -126,8 +127,8 @@ for label in WEEKS:
     sheet(loan_file, 'Activity', ['Item', 'Amount'],
           [['Opening balance', opening], ['Advances', adv], ['Repayments', -rep], ['Interest', interest], ['Closing balance', loan]], 'B')
     if sourced:
-        monday = end + dt.timedelta(days=1)
-        mail(base / 'sources' / f'{monday} Granite Point loan activity.eml', LENDER, f'Loan activity, week ending {end:%m/%d/%Y}', monday,
+        sent = end + dt.timedelta(days=2 if label == LABOR_DAY_WEEK else 1)
+        mail(base / 'sources' / f'{sent} Granite Point loan activity.eml', LENDER, f'Loan activity, week ending {end:%m/%d/%Y}', sent,
              'Hello,\n\nAttached is your loan activity for the week. Please let us know if you have any questions.\n\nGranite Point Credit\n', loan_file)
         loan_file.unlink()
     if label == SOURCED:

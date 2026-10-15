@@ -8,11 +8,11 @@ One output per week ending (instance label = week-ending date, a Sunday):
 - `ar-aging` – uploaded AR aging xlsx (Customer, Currency, Current, 1-30, 31-60, 61-90, 91-120, 120+, Total), as of week end.
 - `card-receipts` – uploaded card processor CSV (Date, Processor, Batch, Gross, Fees, Net), batches not yet settled (Thu–Sat before week end).
 - `inventory` – **fetched** (from wk 08/16/2026; uploaded before): `fetch_inventory.py INSTANCE` reads
-  /home/spoj/src/rollforward/demo/run/data-sources/warehouse.sqlite (read-only), table `inventory_snapshot`,
+  /data-sources/warehouse.sqlite (read-only), table `inventory_snapshot`,
   latest `as_of` on or before the week end → `working/Inventory at cost MM.DD.YYYY.xlsx` (as_of date, same layout as the old uploads:
   SKU, Description, Category, Location DC/Store/In-transit, Qty, Unit cost, Ext cost, Last sale). Item gets a `source`.
 - `loan-activity` – **fetched** (from wk 08/16/2026): Granite Point emails it each Monday after week end to
-  /home/spoj/src/rollforward/demo/run/data-sources/mailbox (.eml, xlsx attached). `fetch_loan.py INSTANCE` saves the attachment
+  /data-sources/mailbox (.eml, xlsx attached). `fetch_loan.py INSTANCE` saves the attachment
   named `... loan activity MM.DD.YYYY.xlsx` (week-end date) to working/. Granite Point is closed Mon 09/07/2026 (Labor Day);
   that week's report comes Tuesday. If no email yet, keep the item `"file": null` and say so, build with the revolver
   carried from the previous week's borrowing base (`build_bb.py ... --carry-revolver PREV_BB.xlsx`, Base!C24), flag it as

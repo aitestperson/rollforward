@@ -36,7 +36,7 @@
    "name": "Inventory at cost",
    "kind": "input",
    "file": "working/Inventory at cost 08.22.2026.xlsx",
-   "source": "Warehouse DB /home/spoj/src/rollforward/demo/run/data-sources/warehouse.sqlite, table inventory_snapshot, as_of 2026-08-22 (latest on or before 08/23); read 2026-10-15 01:41 UTC with working/fetch_inventory.py",
+   "source": "Warehouse DB /data-sources/warehouse.sqlite, table inventory_snapshot, as_of 2026-08-22 (latest on or before 08/23); read 2026-10-15 01:41 UTC with working/fetch_inventory.py",
    "notes": [
     {
      "ref": "",
@@ -55,7 +55,7 @@
      "text": "Attachment of Granite Point's 08/24 email (arrived after the first build). Opening 11,593,210.39 ties to 08/16's revolver balance; rolls to closing 10,506,883.60 = revolver balance (advances 730,771.22, repayments 1,834,933.72, interest 17,835.71)."
     }
    ],
-   "source": "Mailbox /home/spoj/src/rollforward/demo/run/data-sources/mailbox, '2026-08-24 Granite Point loan activity.eml' (Granite Point Credit, Mon 24 Aug 2026), attachment saved with working/fetch_loan.py on 2026-10-15"
+   "source": "Mailbox /data-sources/mailbox, '2026-08-24 Granite Point loan activity.eml' (Granite Point Credit, Mon 24 Aug 2026), attachment saved with working/fetch_loan.py on 2026-10-15"
   },
   {
    "id": "fx-rate",
