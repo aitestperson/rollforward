@@ -177,6 +177,7 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
      - **08-23:** created while 08-16 is still open, so only 08-16 shows where the sources are. The lender's email arrives late, and a Steer asks for a refetch.
      - **A stray instance** is abandoned, so 08-30 must start from 08-23.
      - **08-30:** the warehouse snapshot is stale, and a lender email raises one customer's concentration limit for that week only.
+     - **09-06:** open and empty in the image, for a person to drop the AR aging and card receipts into. The sources are the same; the loan email is dated Tuesday, as Monday 09-07 is Labor Day.
 
      A driver imports the examples one at a time, then stages each forward week only when the agent may see it. To test the build, it compares the agent's outputs with the generator's, and prints checks (ids, headlines, sources, citations, `process.md` size); that is test tooling, not part of the system.
    - **Environment:**

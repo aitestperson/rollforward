@@ -11,13 +11,13 @@
     {"ref": "", "text": "12 batches dated 08/13-08/15; Gross − Fees = Net on every row; borrowing base uses Net (after fees) = 1,461,678.64."}
   ]},
   {"id": "inventory", "name": "Inventory at cost", "kind": "input", "file": "working/Inventory at cost 08.15.2026.xlsx",
-   "source": "Warehouse DB /home/spoj/src/rollforward/demo/run/data-sources/warehouse.sqlite, table inventory_snapshot, as_of 2026-08-15 (latest on or before 08/16); read 2026-10-15 01:38 UTC with working/fetch_inventory.py",
+   "source": "Warehouse DB /data-sources/warehouse.sqlite, table inventory_snapshot, as_of 2026-08-15 (latest on or before 08/16); read 2026-10-15 01:38 UTC with working/fetch_inventory.py",
    "notes": [
     {"ref": "", "text": "Fetched from the warehouse DB instead of uploaded, from this week on: 300 SKUs, no duplicates, Ext cost 17,060,111.58 (up 291,815.04). Slow-moving = last sale >270 days before 08/15, excluding In-transit."},
     {"ref": "", "text": "Check on the fetch: the DB's 08/08 snapshot matches last week's uploaded inventory v2 row for row."}
   ]},
   {"id": "loan-activity", "name": "Granite Point loan activity", "kind": "input", "file": "working/Granite Point loan activity 08.16.2026.xlsx",
-   "source": "Mailbox /home/spoj/src/rollforward/demo/run/data-sources/mailbox, '2026-08-17 Granite Point loan activity.eml' (Granite Point Credit, Mon 17 Aug 2026), attachment saved with working/fetch_loan.py on 2026-10-15",
+   "source": "Mailbox /data-sources/mailbox, '2026-08-17 Granite Point loan activity.eml' (Granite Point Credit, Mon 17 Aug 2026), attachment saved with working/fetch_loan.py on 2026-10-15",
    "notes": [
     {"ref": "", "text": "Attachment of Granite Point's 08/17 email (no longer uploaded). Opening 11,529,689.34 ties to last week's revolver balance; rolls to closing 11,593,210.39 = revolver balance (advances 1,667,231.87, repayments 1,621,448.80, interest 17,737.98)."}
   ]},

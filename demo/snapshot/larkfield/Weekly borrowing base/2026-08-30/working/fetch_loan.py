@@ -8,7 +8,7 @@ Fails if none or more than one matches."""
 import datetime as dt, email, glob, os, sys
 from email import policy
 
-MAILBOX = "/home/spoj/src/rollforward/demo/run/data-sources/mailbox"
+MAILBOX = "/data-sources/mailbox"
 inst = sys.argv[1].rstrip("/")
 mbox = sys.argv[2] if len(sys.argv) > 2 else MAILBOX
 we = dt.date.fromisoformat(os.path.basename(os.path.abspath(inst)))

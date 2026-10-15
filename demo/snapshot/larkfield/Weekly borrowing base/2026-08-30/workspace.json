@@ -36,7 +36,7 @@
    "name": "Inventory at cost",
    "kind": "input",
    "file": "working/Inventory at cost 08.26.2026.xlsx",
-   "source": "Warehouse DB /home/spoj/src/rollforward/demo/run/data-sources/warehouse.sqlite, table inventory_snapshot, as_of 2026-08-26 (latest on or before 08/30); read 2026-10-15 01:43 UTC with working/fetch_inventory.py",
+   "source": "Warehouse DB /data-sources/warehouse.sqlite, table inventory_snapshot, as_of 2026-08-26 (latest on or before 08/30); read 2026-10-15 01:43 UTC with working/fetch_inventory.py",
    "notes": [
     {
      "ref": "",
@@ -59,7 +59,7 @@
    "name": "Granite Point loan activity",
    "kind": "input",
    "file": "working/Granite Point loan activity 08.30.2026.xlsx",
-   "source": "Mailbox /home/spoj/src/rollforward/demo/run/data-sources/mailbox, '2026-08-31 Granite Point loan activity.eml' (Granite Point Credit, Mon 31 Aug 2026), attachment saved with working/fetch_loan.py on 2026-10-15",
+   "source": "Mailbox /data-sources/mailbox, '2026-08-31 Granite Point loan activity.eml' (Granite Point Credit, Mon 31 Aug 2026), attachment saved with working/fetch_loan.py on 2026-10-15",
    "notes": [
     {
      "ref": "",
