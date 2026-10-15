@@ -1,9 +1,9 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { createHmac } from 'node:crypto';
 import { once } from 'node:events';
-import { cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs';
+import { cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -20,23 +20,26 @@ const at = (...parts: string[]) => `/api/larkfield/${parts.map(encodeURIComponen
 const headers = { cookie: '' };
 const json = async (path: string) => (await fetch(base + path, { headers })).json();
 const call = (method: string, path: string, body?: BodyInit) => fetch(base + path, { method, body, headers });
-const login = (code: string) => fetch(base + '/login', { method: 'POST', body: new URLSearchParams({ code }), redirect: 'manual' });
-const now = () => Math.floor(Date.now() / 30_000);
-const code = (step: number) => {
+const rfc = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ'; // base32 of the RFC 6238 test key
+const form = (path: string, fields: Record<string, string>, cookie = '') => fetch(base + path, { method: 'POST', body: new URLSearchParams(fields), headers: { cookie } });
+const accessCli = (...args: string[]) => execFileSync(process.execPath, [join(app, 'src', 'access.ts'), root, ...args], { encoding: 'utf8' });
+const code = (secret: string, step = Math.floor(Date.now() / 30_000)) => {
   const counter = Buffer.alloc(8);
   counter.writeBigUInt64BE(BigInt(step));
-  const h = createHmac('sha1', '12345678901234567890').update(counter).digest();
+  const key = Buffer.from([...secret].map(c => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.indexOf(c).toString(2).padStart(5, '0')).join('').match(/.{8}/g)!.map(b => parseInt(b, 2)));
+  const h = createHmac('sha1', key).update(counter).digest();
   return String((h.readUInt32BE(h[19] & 15) & 0x7fffffff) % 1_000_000).padStart(6, '0');
 };
+const cookieOf = (r: Response) => r.headers.get('set-cookie')!.split(';')[0];
 const seriesList = async () => (await json('/api')).find((c: { client: string }) => c.client === 'larkfield').series;
 const shown = async (name: string) => (await seriesList()).find((s: { series: string }) => s.series === name);
 
 before(async () => {
   cpSync(join(app, 'demo', 'snapshot'), root, { recursive: true });
+  writeFileSync(join(root, '.access.json'), JSON.stringify({ alex: { secret: rfc } }));
   const env: NodeJS.ProcessEnv = { ...process.env, HOME: join(tmp, 'home') };
   mkdirSync(env.HOME);
   delete env.OPENROUTER_API_KEY;
-  env.RF_TOTP_SECRET = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ'; // base32 of the RFC 6238 test key
   const probe = createServer();
   await new Promise(ok => probe.listen(0, '127.0.0.1', ok));
   const port = (probe.address() as { port: number }).port;
@@ -47,7 +50,7 @@ before(async () => {
     proc.stdout!.on('data', d => String(d).includes('rollforward on') && ok(null));
     proc.on('exit', code => fail(new Error(`server exited with ${code}`)));
   });
-  headers.cookie = (await login(code(now()))).headers.get('set-cookie')!.split(';')[0];
+  headers.cookie = cookieOf(await form('/login', { name: 'alex', code: code(rfc) }));
 });
 
 after(async () => {
@@ -182,13 +185,29 @@ test('a cross-site POST is refused, so another web page cannot steer the agent',
   assert.equal(r.status, 403);
 });
 
-test('the site asks for a code from an authenticator app; each wrong code doubles the wait before the next try', async () => {
-  assert.equal(code(1), '287082', 'the RFC 6238 vector for T=59, so the server agrees with the RFC');
+test('an invite link sets up one person, once; revoking them ends their session', async () => {
+  const link = accessCli('invite', 'Sam').trim(), secretOf = (page: string) => page.match(/name="secret" value="([A-Z2-7]{32})"/)![1];
+  const secret = secretOf(await (await fetch(base + link)).text());
+  assert.notEqual(secretOf(await (await fetch(base + link)).text()), secret, 'each view shows a new secret');
+  assert.equal((await form(link, { secret, code: 'wrong' })).status, 401);
+  const r = await form(link, { secret, code: code(secret) });
+  assert.equal(r.status, 200);
+  const sam = cookieOf(r);
+  assert.equal((await fetch(base + '/api', { headers: { cookie: sam } })).status, 200);
+  assert.equal((await fetch(base + link)).status, 404, 'the link works once');
+  assert.match(accessCli('list'), /^sam\tset up$/m);
+  accessCli('revoke', 'sam');
+  assert.equal((await fetch(base + '/api', { headers: { cookie: sam } })).status, 401);
+});
+
+test('the site asks for a name and a code from an authenticator app; each wrong code doubles the wait before the next try', async () => {
+  assert.equal(code(rfc, 1), '287082', 'the RFC 6238 vector for T=59, so the server agrees with the RFC');
   assert.equal((await fetch(base + '/api')).status, 401);
   assert.match(await (await fetch(base + '/')).text(), /authenticator app/);
   assert.equal(await (await fetch(base + '/agent/workspace')).text(), 'no run for this token', 'the agent API takes its run token instead');
-  assert.equal((await login('wrong')).status, 401);
-  assert.equal((await login(code(now()))).status, 429, 'a right code waits out the delay too');
+  assert.equal((await form('/login', { name: 'alex', code: 'wrong' })).status, 401);
+  assert.equal((await form('/login', { name: 'alex', code: code(rfc) })).status, 429, 'a right code waits out the delay too');
   await new Promise(r => setTimeout(r, 2000));
-  assert.equal((await login(code(now()))).status, 303);
+  const cookie = cookieOf(await form('/login', { name: 'Alex ', code: code(rfc) }));
+  assert.equal((await fetch(base + '/api', { headers: { cookie } })).status, 200, 'a name ignores case and spaces');
 });

@@ -1,12 +1,13 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createReadStream, existsSync, globSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { basename, dirname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInstance, duplicateInstance, forget, renameInstance, HttpError, instance, instances, isPerson, safeName, type Entry, type Instance } from './store.ts';
 import { startRun, type Run } from './runner.ts';
+import { access } from './access.ts';
 
 const root = resolve(process.argv[2]);
 const app = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -14,10 +15,6 @@ const page = join(app, 'web', 'index.html');
 const exec = promisify(execFile);
 const port = Number(process.argv[3] ?? 8780);
 const LIMIT_MS = Number(process.env.RF_LIMIT_MIN ?? 120) * 60_000;
-const totpKey = base32(process.env.RF_TOTP_SECRET!);
-delete process.env.RF_TOTP_SECRET; // so the agent's processes don't inherit it
-const WEEK_S = 7 * 86_400;
-let fails = 0, nextTry = 0;
 
 type Active = { inst: Instance; n: number; token: string; run?: Run; sent: number; seen: number; texts: Map<string, number>; interrupted: boolean; done: boolean; cost: number; timer?: NodeJS.Timeout };
 const active = new Map<string, Active>();
@@ -293,61 +290,13 @@ async function people(req: IncomingMessage, res: ServerResponse, url: URL) {
   send(res, 200, 'ok');
 }
 
-function base32(s: string): Buffer {
-  const bits = [...s.replace(/[\s=]/g, '').toUpperCase()].map(c => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.indexOf(c).toString(2).padStart(5, '0')).join('');
-  return Buffer.from(bits.match(/.{8}/g)!.map(b => parseInt(b, 2)));
-}
-
-function totp(step: number): string {
-  const counter = Buffer.alloc(8);
-  counter.writeBigUInt64BE(BigInt(step));
-  const h = createHmac('sha1', totpKey).update(counter).digest();
-  return String((h.readUInt32BE(h[19] & 15) & 0x7fffffff) % 1_000_000).padStart(6, '0');
-}
-
-const sign = (exp: string) => createHmac('sha256', totpKey).update(`session ${exp}`).digest('base64url');
-
-function signedIn(req: IncomingMessage): boolean {
-  const [exp = '', sig = ''] = (req.headers.cookie?.match(/(?:^|;\s*)rf=([^;]*)/)?.[1] ?? '').split('.');
-  const want = Buffer.from(sign(exp)), got = Buffer.from(sig);
-  return Number(exp) > Date.now() && got.length === want.length && timingSafeEqual(got, want);
-}
-
-function gate(res: ServerResponse, status: number, note = '') {
-  res.writeHead(status, { 'content-type': 'text/html; charset=utf-8' });
-  res.end(`<!doctype html><meta name="viewport" content="width=device-width"><title>rollforward</title>
-<form method="post" action="/login" style="font: 15px system-ui; max-width: 20em; margin: 25vh auto; padding: 0 16px">
-<p>Enter the code from your authenticator app.</p>
-<input name="code" inputmode="numeric" autocomplete="one-time-code" autofocus required style="font: 24px ui-monospace, monospace; width: 6.5em">
-<button style="font: inherit; padding: 6px 14px">Enter</button>
-<p style="color: #b42318">${note}</p></form>`);
-}
-
-async function login(req: IncomingMessage, res: ServerResponse) {
-  const wait = Math.ceil((nextTry - Date.now()) / 1000);
-  if (wait > 0) return gate(res, 429, `Too many tries. Try again in ${wait} s.`);
-  const code = new URLSearchParams((await body(req)).toString()).get('code')?.replace(/\D/g, '');
-  const step = Math.floor(Date.now() / 30_000);
-  if (![step - 1, step, step + 1].some(s => totp(s) === code)) {
-    nextTry = Date.now() + Math.min(2 ** ++fails, 300) * 1000;
-    return gate(res, 401, 'Wrong code.');
-  }
-  fails = 0;
-  const exp = String(Date.now() + WEEK_S * 1000);
-  res.writeHead(303, { location: '/', 'set-cookie': `rf=${exp}.${sign(exp)}; Path=/; Max-Age=${WEEK_S}; HttpOnly; Secure; SameSite=Lax` });
-  res.end();
-}
-
 createServer(async (req, res) => {
   const url = new URL(req.url!, 'http://x');
   try {
     const site = req.headers['sec-fetch-site'];
     if (req.method !== 'GET' && site && site !== 'same-origin') throw new HttpError(403, 'cross-site request refused');
-    if (url.pathname === '/login' && req.method === 'POST') await login(req, res);
-    else if (!url.pathname.startsWith('/agent/') && !signedIn(req)) {
-      if (url.pathname !== '/') throw new HttpError(401, 'enter the code first');
-      gate(res, 200);
-    } else if (url.pathname === '/') {
+    if (await access(req, res, url)) return;
+    if (url.pathname === '/') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       res.end(readFileSync(page));
     } else if (url.pathname === '/api') send(res, 200, tree());

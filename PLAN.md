@@ -202,7 +202,7 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
 
    Then add a second series, such as a monthly rec whose day-2 GL listing arrives later.
 3. **M3, hosting.** Sign-in, one folder per client, and backups. Pi runs in Docker Sandboxes, built from Docker's Pi kit plus Python, the spreadsheet libraries and `rf`.
-   - **A code gate (built, for an early demo):** before anything but `/agent/`, the server asks for a TOTP code from an authenticator app. The secret is `RF_TOTP_SECRET`, base32, kept out of the agent's environment. A right code sets a signed cookie for 7 days. Each wrong one doubles the wait before anyone's next try, up to 5 minutes. People still give their name in the browser.
+   - **A code gate (built, for an early demo):** before anything but `/agent/`, the server asks for a name and a TOTP code from an authenticator app. Each person sets up their own secret from a one-time invite link, made and revoked with `node src/access.ts`; the list is `.access.json` in the data root. A right code sets a cookie for 7 days, signed with the person's secret, so revoking or re-inviting them ends it. Each wrong code doubles the wait before anyone's next try, up to 5 minutes. The browser takes its name for the log from the sign-in.
    - Each sandbox is a microVM. The series folder is mounted read-only; only the instance's `working/` and `session/` are writable.
    - **Network:** outbound traffic is denied except to the model API and the agent API. Docker's proxy adds the model key on the way out, so the key never enters the sandbox. The agent API is reached at `host.docker.internal` after `sbx policy allow network --sandbox <name> localhost:<port>`.
    - **The agent API gets its own port.** Each call carries a per-run token that is bound to one instance and expires when the run ends. A sandbox can then never reach another client through the server.
@@ -256,7 +256,7 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
 20. **Two end states** (15 Oct): Close or Abandon.
 21. **Series visibility** (15 Oct): one way, granted by the publishing series, read-only for the reader; one workspace for now. People's roles per series (owner, member, visitor) come later.
 22. **Duplicate and series settings** (15 Oct): a closed or abandoned instance can be duplicated into an open one. Each series has settings, for now its name and its visibility to other series.
-23. **A TOTP gate for an early public demo** (16 Oct): one code from an authenticator app rather than a password, since codes expire and an enrolled phone is hard to pass on. It stays on the `totp` branch, so main has none. Microsoft sign-in, on the `auth-proxy` branch, waits for the tenant's admin consent.
+23. **A TOTP gate for an early public demo** (16 Oct): codes from an authenticator app rather than a password, since codes expire and an enrolled phone is hard to pass on. One secret per person, set up from a one-time link, so one person can be revoked. It stays on the `totp` branch, so main has none. Microsoft sign-in through oauth2-proxy is dropped for now, since the tenant's admin would have to consent.
 
 ## Proposed by the agent (open to change)
 

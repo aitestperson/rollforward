@@ -291,6 +291,7 @@ function who() {
 async function api(path, opts) {
   const r = await fetch(path, opts);
   const t = await r.text();
+  if (r.status === 401) location.reload();
   if (!r.ok) { toast(t); throw new Error(t); }
   try { return JSON.parse(t); } catch { return t; }
 }

@@ -17,8 +17,8 @@ Recurring tasks, files in and files out. People drop this period's input files i
 
 ## Try it
 
-    cp .env.example .env          # set OPENROUTER_API_KEY and RF_TOTP_SECRET (see Access)
-    docker compose up --build     # then open http://127.0.0.1:8780
+    cp .env.example .env          # set OPENROUTER_API_KEY
+    docker compose up --build     # then invite yourself (see Access) and open the link
 
 The image comes with a demo series that is already populated: a weekly borrowing base for a made-up housewares company, nine weeks the agent has done.
 - **Week 08-16:** the agent starts fetching the inventory from a warehouse database, the lender's figures from a mailbox and the EUR rate from the ECB.
@@ -29,14 +29,17 @@ The image comes with a demo series that is already populated: a weekly borrowing
 
 ## Access
 
-The site asks for a code from an authenticator app, then keeps the browser in for 7 days. Each wrong code doubles the wait before the next try, up to 5 minutes. Make a secret and scan it into the app:
+Each person sets up an authenticator app from a one-time link. After that the site asks for their name and a code, and keeps the browser in for 7 days. Each wrong code doubles the wait before the next try, up to 5 minutes.
 
-    python3 -c 'import base64, os; print(base64.b32encode(os.urandom(20)).decode())'    # RF_TOTP_SECRET
-    uvx --from qrcode qr "otpauth://totp/rollforward?secret=$RF_TOTP_SECRET&issuer=rollforward"
+    docker compose exec rollforward node src/access.ts /data invite alice   # prints /join/...: send alice the site's address with it
+    docker compose exec rollforward node src/access.ts /data list
+    docker compose exec rollforward node src/access.ts /data revoke alice   # her link, code and sessions stop working at once
+
+A link works until it's used. Each time it's opened it shows a new key, so a mail scanner that opens it first learns nothing. Inviting someone again moves them to a new phone. The list is `.access.json` in the data root.
 
 To reach it from the internet, run `tailscale funnel --bg 8780`.
 
-**Security:** anyone with a code can steer the agent, which runs shell commands inside the container: it can read the API key and every series, and reach whatever the host can reach.
+**Security:** anyone signed in can steer the agent, which runs shell commands inside the container: it can read the API key, everyone's keys and every series, and reach whatever the host can reach.
 
 ## Without Docker
 
@@ -56,7 +59,6 @@ The [justfile](justfile) has these and more as recipes; `just` lists them.
   - `RF_LIMIT_MIN` (120)
   - `RF_PI_ARGS` (a JSON array of extra Pi arguments)
   - `RF_HOST` (`127.0.0.1`)
-  - `RF_TOTP_SECRET` (required): the code's base32 secret
 
 To build the demo from scratch (about $4 of model use; the generator needs the internet for the ECB rates):
 
