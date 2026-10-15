@@ -459,7 +459,7 @@ function renderAdv() {
   if (!data) return;
   $('#compose').hidden = data.workspace.status !== 'open';
   const d = lastDone();
-  const cost = data.log.reduce((t, e) => t + (e.cost ?? 0), 0);
+  const cost = data.log.reduce((t, e) => t + (e.cost ?? 0), 0) + (data.run?.cost ?? 0);
   const s = (data.run ? `Run ${data.run.n} running` : d ? `Run ${d.run} finished ${hhmm(d.at)}${d.summary ? ' · ' + d.summary : ''}` : 'No runs yet') + (cost ? ` · ${usd(cost)} so far` : '');
   $('#advbar').innerHTML = `<span class="t">Advanced</span><span class="s">${esc(s)}</span><span class="r">${ui.adv ? 'Hide steps' : 'Show steps'}</span>`;
   if (!ui.adv) return;

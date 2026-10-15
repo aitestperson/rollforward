@@ -252,7 +252,7 @@ async function people(req: IncomingMessage, res: ServerResponse, url: URL) {
   const inst = instance(dir);
   const a = active.get(seriesDir);
   const mine = a?.inst === inst ? a : undefined;
-  if (!action) return send(res, 200, { workspace: inst.doc, log: inst.log, run: mine ? { n: mine.n } : null, queued: queued(inst) });
+  if (!action) return send(res, 200, { workspace: inst.doc, log: inst.log, run: mine ? { n: mine.n, cost: +mine.cost.toFixed(4) } : null, queued: queued(inst) });
   if (action === 'steps') return send(res, 200, steps(inst));
   if (req.method !== 'POST') throw new HttpError(405, 'POST only');
   if (action === 'duplicate') {
