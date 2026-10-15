@@ -1,0 +1,8 @@
+services:
+  rollforward:
+    build: .
+    ports: ["127.0.0.1:8780:8780"]
+    env_file: .env
+    volumes: ["data:/data"]
+volumes:
+  data:

@@ -1,0 +1,5 @@
+openpyxl
+pandas
+xlrd
+extract-msg
+defusedxml

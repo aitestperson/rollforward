@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>rollforward</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Tokens and rules: docs/design.md. Blue = uploaded by a person, ink = made by the agent, red = a note. */
+:root {
+  --paper: #f6f7f8; --sheet: #ffffff; --rule: #e3e6ea; --rule-2: #cdd2d9;
+  --ink: #15181d; --ink-2: #474e5b; --ink-3: #6b7280;
+  --person: #1f48c7; --person-bg: #eef2fc; --note: #d42a1e;
+  --r1: 4px; --r2: 8px;
+  --sans: "IBM Plex Sans", "Noto Sans", sans-serif; --mono: "IBM Plex Mono", "DejaVu Sans Mono", monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.45 var(--sans); color: var(--ink); background: var(--paper); font-variant-numeric: tabular-nums; }
+button { font: inherit; cursor: pointer; }
+a { color: inherit; }
+.app { display: grid; grid-template-columns: 236px 1fr auto; height: 100dvh; }
+
+.side { border-right: 1px solid var(--rule); padding: 16px 12px; display: flex; flex-direction: column; overflow: auto; background: var(--paper); }
+.client { padding: 2px 8px 10px; font-weight: 600; font-size: 15px; }
+.label { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); padding: 8px 8px 6px; }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--r1); text-decoration: none; }
+.row .n { color: var(--ink-3); font-size: 12px; font-weight: 400; white-space: nowrap; }
+.series.on { font-weight: 600; }
+.inst { padding: 5px 8px 5px 20px; color: var(--ink-2); font-size: 13px; }
+.inst.on { background: #e7eaee; color: var(--ink); font-weight: 500; }
+.inst .q { color: var(--note); }
+.quiet { display: block; padding: 5px 8px 5px 20px; font-size: 12px; color: var(--ink-3); background: none; border: 0; text-align: left; }
+.vis { display: flex; align-items: center; gap: 6px; padding: 0 8px 6px 20px; font-size: 12px; color: var(--ink-3); }
+.vis button { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.vis button:hover { color: var(--ink); }
+.vis .rd { display: inline-flex; align-items: center; gap: 4px; }
+.vl { padding: 14px 16px; display: grid; gap: 10px; align-content: start; font-size: 13.5px; }
+.pv.small { inset: 12vh auto auto 50%; transform: translateX(-50%); width: min(420px, 92vw); }
+.vl label { display: flex; align-items: center; gap: 8px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--note); display: inline-block; margin-left: 6px; vertical-align: 1px; }
+.legend { margin-top: auto; font-size: 12px; color: var(--ink-2); padding: 16px 8px 4px; display: grid; gap: 4px; }
+.legend i { font-style: normal; font-weight: 600; }
+.legend .p { color: var(--person); }
+.legend .tri { display: inline-block; width: 0; height: 0; border-top: 9px solid var(--note); border-left: 9px solid transparent; margin-right: 6px; }
+.legend .dash { display: inline-block; width: 16px; height: 10px; border: 1px dashed var(--ink-3); border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+.main { display: flex; flex-direction: column; min-width: 0; height: 100dvh; position: relative; }
+.bar { display: flex; align-items: center; gap: 12px; padding: 14px 28px; border-bottom: 1px solid var(--rule); background: var(--sheet); }
+.menu { display: none; border: 1px solid var(--rule-2); background: var(--sheet); border-radius: var(--r1); padding: 6px 10px; }
+.crumb { font-size: 13px; color: var(--ink-3); }
+.bar h1 { margin: 2px 0 0; font-size: 20px; font-weight: 600; letter-spacing: -.01em; }
+.state { margin-left: auto; font-size: 13px; color: var(--ink-2); display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 3px rgba(21,24,29,.12); }
+.btn { border: 1px solid var(--rule-2); background: var(--sheet); color: var(--ink); border-radius: var(--r1); padding: 7px 12px; font-size: 13px; font-weight: 500; white-space: nowrap; text-decoration: none; display: inline-block; }
+.btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+.btn:disabled { background: var(--sheet); color: var(--ink-3); border-color: var(--rule-2); cursor: default; }
+.btn.sel { background: var(--paper); box-shadow: inset 0 1px 2px rgba(0,0,0,.08); }
+
+.panes { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; overflow: auto; padding-bottom: 46px; }
+.pane { padding: 22px 28px 20px; display: flex; flex-direction: column; }
+.pane + .pane { border-left: 1px solid var(--rule); }
+.pane.drag { background: var(--person-bg); }
+.ph { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+.ph h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.ph .c { font-size: 13px; color: var(--ink-3); }
+.ph .btn { margin-left: auto; padding: 4px 10px; font-size: 12px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 10px; }
+.tile { position: relative; background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r1); padding: 11px 12px 10px; min-height: 96px; display: flex; flex-direction: column; gap: 4px; cursor: pointer; text-align: left; }
+.tile.on, .tile.drag { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.ext { font: 500 10px/1 var(--mono); letter-spacing: .04em; color: var(--ink-3); display: flex; justify-content: space-between; align-items: baseline; }
+.nc { font: 500 11.5px/1 var(--sans); letter-spacing: 0; color: var(--note); padding-right: 10px; }
+.fn { font-size: 13px; font-weight: 500; line-height: 1.32; word-break: break-word; }
+.tile.person .fn, .tile.person .meta b { color: var(--person); }
+.meta { margin-top: auto; font-size: 12px; color: var(--ink-3); }
+.meta b { font-weight: 500; color: var(--ink); }
+.corner { position: absolute; top: -1px; right: -1px; width: 0; height: 0; border-top: 12px solid var(--note); border-left: 12px solid transparent; border-top-right-radius: var(--r1); }
+.tile.ghost { background: transparent; border: 1px dashed var(--rule-2); }
+.tile.ghost .fn { color: var(--ink-2); font-weight: 400; }
+.hint { margin-top: auto; padding-top: 18px; font-size: 12px; color: var(--ink-3); }
+.hl { font-size: 12px; line-height: 1.35; }
+.src { font-size: 11.5px; color: var(--ink-3); word-break: break-all; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.also { margin-top: 16px; font-size: 12.5px; display: grid; gap: 4px; }
+.also .ah { font-size: 12px; color: var(--ink-3); }
+.also .via { color: var(--ink-3); }
+a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: pointer; }
+.cites { margin-top: 6px; font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.pv { position: fixed; inset: 4vh 4vw; z-index: 40; background: var(--sheet); border: 1px solid var(--rule-2); border-radius: var(--r2); box-shadow: 0 6px 24px rgba(21,24,29,.18); display: flex; flex-direction: column; }
+.pv[hidden] { display: none; }
+.pvh { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+.pvh b { font-size: 13px; word-break: break-all; margin-right: auto; }
+.tabs { display: flex; gap: 6px; padding: 8px 14px; flex-wrap: wrap; border-bottom: 1px solid var(--rule); }
+.tabs .btn { padding: 4px 9px; font-size: 12px; }
+.pvb { flex: 1; overflow: auto; }
+.pvb pre { white-space: pre-wrap; word-break: break-word; font: 12.5px/1.5 var(--mono); padding: 14px 16px; margin: 0; }
+.pvb img { max-width: 100%; display: block; margin: 12px auto; }
+.sh { border-collapse: collapse; font: 12px/1.3 var(--mono); }
+.sh th, .sh td { border: 1px solid var(--rule); padding: 3px 6px; white-space: nowrap; }
+.sh th { position: sticky; top: 0; background: var(--paper); color: var(--ink-3); font-weight: 500; z-index: 1; }
+.sh td.rn { position: sticky; left: 0; background: var(--paper); color: var(--ink-3); text-align: right; }
+.sh td.num { text-align: right; }
+.sh td.fx { color: var(--ink-3); font-style: italic; }
+.sh td.noted { position: relative; cursor: pointer; }
+.sh td.noted::after { content: ''; position: absolute; top: -1px; right: -1px; border-top: 9px solid var(--note); border-left: 9px solid transparent; }
+.pvn { padding: 10px 16px; border-top: 1px solid var(--rule); font-size: 13px; white-space: pre-wrap; }
+.pvn:empty { display: none; }
+.empty { color: var(--ink-3); font-size: 13px; padding: 40px 28px; }
+
+.card { position: fixed; z-index: 20; width: 396px; max-height: 80dvh; overflow: auto; background: var(--sheet); border: 1px solid var(--rule-2); border-radius: var(--r2); box-shadow: 0 3px 10px rgba(21,24,29,.10); padding: 14px 16px 12px; }
+.card[hidden] { display: none; }
+.card .cf { font-weight: 600; font-size: 13px; word-break: break-word; }
+.card .cp { font-size: 12px; color: var(--ink-3); margin: 2px 0 10px; }
+.card .cp b { font-weight: 500; color: var(--ink); }
+.card .cp b.p { color: var(--person); }
+.nb { border-top: 1px solid var(--rule); padding: 10px 0 2px; font-size: 13px; white-space: pre-wrap; }
+.ref { font: 500 11px/1.6 var(--mono); color: var(--ink); background: #eceff3; border-radius: 3px; padding: 1px 5px; margin-right: 6px; }
+.choices { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 6px; white-space: normal; }
+.choice { border: 1px solid var(--rule-2); background: var(--sheet); border-radius: var(--r1); padding: 6px 10px; font-size: 12.5px; font-weight: 500; color: var(--ink); text-align: left; }
+.choice.def { border-color: var(--ink); }
+.choice.picked { background: var(--ink); color: #fff; border-color: var(--ink); }
+.choice:disabled:not(.picked) { color: var(--ink-3); }
+.by { font-size: 11.5px; color: var(--ink-3); white-space: normal; }
+.acts { display: flex; gap: 8px; border-top: 1px solid var(--rule); padding-top: 10px; margin-top: 8px; }
+
+.adv { position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--sheet); border-top: 1px solid var(--rule-2); font-size: 13px; color: var(--ink-2); }
+.adv.open { box-shadow: 0 -6px 20px rgba(21,24,29,.08); }
+.adv .ab { display: flex; align-items: center; gap: 14px; height: 46px; padding: 0 28px; cursor: pointer; white-space: nowrap; overflow: hidden; }
+.adv .ab .t { color: var(--ink); font-weight: 600; }
+.adv .ab .t::before { content: "▸ "; color: var(--ink-3); }
+.adv.open .ab .t::before { content: "▾ "; }
+.adv .ab .s { overflow: hidden; text-overflow: ellipsis; }
+.adv .ab .r { margin-left: auto; color: var(--ink-3); font-size: 12px; }
+.adv .body { display: none; height: min(476px, 60dvh); border-top: 1px solid var(--rule); grid-template-rows: 1fr auto; background: var(--paper); }
+.adv.open .body { display: grid; }
+.trace { overflow: auto; padding: 14px 28px; }
+.trace .rn { color: var(--ink-3); font-size: 12px; margin: 16px 0 6px; white-space: pre-wrap; max-height: 7.5em; overflow: hidden; }
+.trace .say { margin: 10px 0 6px; color: var(--ink); white-space: pre-wrap; }
+.trace .tl { font: 12px/1.6 var(--mono); color: var(--ink-2); white-space: pre-wrap; word-break: break-word; }
+.trace .tl b { color: var(--ink); font-weight: 500; }
+.trace .tl .o { color: var(--ink-3); display: block; max-height: 3.2em; overflow: hidden; padding-left: 16px; }
+.trace .tl .o.err { color: var(--note); }
+.compose { border-top: 1px solid var(--rule); background: var(--sheet); padding: 10px 28px 14px; display: flex; gap: 8px; }
+.compose input { flex: 1; min-width: 0; background: var(--sheet); border: 1px solid var(--rule-2); border-radius: var(--r1); padding: 8px 10px; font: inherit; }
+
+.log { display: none; width: 352px; border-left: 1px solid var(--rule); background: var(--sheet); height: 100dvh; overflow: auto; }
+.log.open { display: block; }
+.log .lh { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--rule); position: sticky; top: 0; background: var(--sheet); }
+.log .lh b { font-size: 15px; font-weight: 600; }
+.e { display: grid; grid-template-columns: 46px 1fr; gap: 6px; padding: 10px 20px; border-bottom: 1px solid var(--rule); font-size: 13px; }
+.e .tm { color: var(--ink-3); font-size: 12px; padding-top: 1px; }
+.e .w { font-weight: 600; }
+.e .w.p { color: var(--person); }
+.e .d { color: var(--ink-2); font-size: 12.5px; margin-top: 2px; white-space: pre-wrap; word-break: break-word; }
+.e .f { font: 11.5px var(--mono); color: var(--ink-3); margin-top: 3px; word-break: break-all; }
+
+@media (max-width: 800px) {
+  .app { display: block; }
+  .side { position: fixed; inset: 0 auto 0 0; width: 280px; z-index: 30; display: none; box-shadow: 0 0 40px rgba(0,0,0,.2); }
+  .side.open { display: flex; }
+  .menu { display: inline-block; }
+  .bar { padding: 10px 14px; flex-wrap: wrap; }
+  .bar h1 { font-size: 17px; }
+  .state { margin-left: 0; order: 5; width: 100%; }
+  .bar .btn.top { padding: 6px 9px; font-size: 12px; }
+  .panes { display: block; padding-bottom: 60px; }
+  .pane { padding: 16px 14px; }
+  .pane + .pane { border-left: 0; border-top: 1px solid var(--rule); }
+  .grid { grid-template-columns: repeat(2, 1fr); }
+  .hint { display: none; }
+  .card { left: 0 !important; right: 0; bottom: 0; top: auto !important; width: auto; max-height: 75dvh; border-radius: 12px 12px 0 0; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .adv { position: fixed; }
+  .adv .ab { padding: 0 14px; }
+  .adv.open { top: 0; display: flex; flex-direction: column; }
+  .adv.open .body { height: auto; flex: 1; }
+  .trace, .compose { padding-left: 14px; padding-right: 14px; }
+  .log.open { position: fixed; inset: 0; width: auto; z-index: 25; }
+  .pv { inset: 0; border-radius: 0; }
+  .sh td { max-width: 24ch; overflow: hidden; text-overflow: ellipsis; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side" id="side"></aside>
+  <main class="main">
+    <div class="bar" id="bar"></div>
+    <div class="panes" id="panes"></div>
+    <div class="adv" id="adv">
+      <div class="ab" id="advbar"></div>
+      <div class="body">
+        <div class="trace" id="trace"></div>
+        <form class="compose" id="compose">
+          <input id="steer" placeholder="Message the agent" autocomplete="off">
+          <button class="btn" type="button" id="interrupt">Interrupt</button>
+          <button class="btn primary">Steer</button>
+        </form>
+      </div>
+    </div>
+  </main>
+  <aside class="log" id="log"></aside>
+</div>
+<div class="card" id="card" hidden></div>
+<div class="pv" id="pv" hidden></div>
+<input type="file" id="picker" multiple hidden>
+<script>
+const $ = s => document.querySelector(s);
+const enc = encodeURIComponent;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const usd = n => '$' + n.toFixed(2);
+function took(e) {
+  const s = Math.round((Date.parse(e.at) - Date.parse(data.log.find(r => r.op === 'run' && r.run === e.run).at)) / 1000);
+  return `${s >= 60 ? Math.floor(s / 60) + 'm ' : ''}${s % 60}s`;
+}
+const hhmm = iso => iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+const fname = f => f.split('/').pop();
+function fileUrl(path, kind = 'files') {
+  const m = path.match(/^\.\.\/([^/]+)\/(.*)$/);
+  return `/${kind}/${[cur.client, cur.series, m ? m[1] : cur.label].map(enc).join('/')}/${(m ? m[2] : path).split('/').map(enc).join('/')}`;
+}
+const ext = f => (f && f.includes('.') ? f.split('.').pop() : '').toUpperCase();
+
+let tree = [], cur = null, data = null, steps = [], openItem = null, showClosed = false, pv = null;
+const ui = { adv: false, log: false };
+
+function who() {
+  if (!localStorage.rfName) localStorage.rfName = (prompt('Your name, for the log:') || '').trim() || 'someone';
+  return localStorage.rfName;
+}
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const t = await r.text();
+  if (!r.ok) { alert(t); throw new Error(t); }
+  try { return JSON.parse(t); } catch { return t; }
+}
+
+const seriesPath = c => `/api/${enc(c.client)}/${enc(c.series)}`;
+const instPath = () => `${seriesPath(cur)}/${enc(cur.label)}`;
+const go = (client, series, label) => { location.hash = '#/' + [client, series, label].filter(Boolean).map(enc).join('/'); };
+
+async function refresh() {
+  tree = await api('/api');
+  const [client, series, label] = location.hash.slice(2).split('/').filter(Boolean).map(decodeURIComponent);
+  cur = client ? { client, series, label } : null;
+  if (!cur) {
+    const c = tree[0], s = c?.series[0];
+    if (s) cur = { client: c.client, series: s.series, label: (s.instances.find(i => i.status === 'open') ?? s.instances.at(-1))?.label };
+  }
+  data = cur?.label ? await api(instPath()) : null;
+  if (ui.adv && data) steps = await api(instPath() + '/steps');
+  render();
+}
+
+function render() {
+  renderSide();
+  renderBar();
+  renderPanes();
+  renderLog();
+  renderAdv();
+  renderCard();
+}
+
+const EYE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const READS = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5v14z"/></svg>';
+
+function renderSide() {
+  let h = '';
+  for (const c of tree) {
+    h += `<div class="client">${esc(c.client)}</div><div class="label">Series</div>`;
+    for (const s of c.series) {
+      const on = cur && cur.client === c.client && cur.series === s.series;
+      const open = s.instances.filter(i => i.status === 'open');
+      const q = open.some(i => i.questions);
+      h += `<a class="row series ${on ? 'on' : ''}" href="#/${enc(c.client)}/${enc(s.series)}"><span>${esc(s.series)}${q ? '<span class="dot"></span>' : ''}</span><span class="n">${open.length} open</span></a>`;
+      if (!on) continue;
+      const shared = s.visible_to.includes('*') ? 'All series' : s.visible_to.join(', ');
+      h += `<div class="vis"><button data-act="visibility" title="Series that can read this one">${EYE}${shared ? esc(shared) : 'Private'}</button>${s.reads.length ? `<span class="rd" title="Series this one can read">${READS}${esc(s.reads.join(', '))}</span>` : ''}</div>`;
+      const closed = s.instances.filter(i => i.status !== 'open');
+      for (const i of s.instances.filter(i => i.status === 'open' || showClosed || i.label === cur.label)) {
+        const st = i.running ? 'running' : i.questions ? `<span class="q">${i.questions} question${i.questions > 1 ? 's' : ''}</span>` : i.status;
+        h += `<a class="row inst ${cur.label === i.label ? 'on' : ''}" href="#/${enc(c.client)}/${enc(s.series)}/${enc(i.label)}"><span>${esc(i.label)}</span><span class="n">${st}</span></a>`;
+      }
+      h += `<button class="quiet" data-act="new-instance">+ New instance</button>`;
+      if (closed.length) h += `<button class="quiet" data-act="toggle-closed">${showClosed ? 'Hide' : 'Show'} closed (${closed.length})</button>`;
+    }
+    h += `<button class="quiet" style="padding-left:8px" data-act="new-series" data-client="${esc(c.client)}">+ New series</button>`;
+  }
+  if (!tree.length) h += '<div class="empty">No clients yet. Make a folder under the data root.</div>';
+  h += `<div class="legend"><div><i class="p">Blue</i> uploaded by a person</div><div><i>Black</i> made by the agent</div><div><span class="tri"></span>a note from the agent</div><div><span class="dash"></span>expected, not there yet</div></div>`;
+  $('#side').innerHTML = h;
+}
+
+function lastDone() { return data.log.findLast(e => e.op === 'done'); }
+
+function renderBar() {
+  let h = `<button class="menu" data-act="menu">☰</button>`;
+  h += `<div><div class="crumb">${esc(cur?.client ?? '')}${cur?.series ? ' · ' + esc(cur.series) : ''}</div><h1>${esc(cur?.label ?? 'No instance')}</h1></div>`;
+  if (data) {
+    const d = lastDone();
+    const state = data.workspace.status !== 'open' ? (data.workspace.status === 'closed' ? 'Closed' : 'Abandoned') : data.run ? `<span class="pulse"></span>Agent working · run ${data.run.n}` : d ? `Agent idle · last run ${hhmm(d.at)}` : 'Waiting for files';
+    h += `<div class="state">${state}</div>`;
+    h += `<button class="btn top" data-act="process">Process</button><button class="btn top ${ui.log ? 'sel' : ''}" data-act="log">Ops log</button>`;
+    const off = data.run ? 'disabled title="Available when the run ends"' : '';
+    if (data.workspace.status === 'open') h += `<button class="btn top" data-act="abandon" ${off}>Abandon</button><button class="btn primary top" data-act="close" ${off}>Close instance</button>`;
+  }
+  $('#bar').innerHTML = h;
+}
+
+function questionState(note) {
+  const a = data.log.findLast(e => e.op === 'answer' && e.note === note.id);
+  return a ? a.choice : null;
+}
+
+function provenance(file) {
+  if (file.startsWith('upload/')) {
+    const e = data.log.find(e => e.op === 'upload' && e.file === file);
+    return { person: true, by: e?.by ?? 'someone', at: e?.at };
+  }
+  const e = data.log.find(e => e.op === 'point' && e.file === file);
+  return { person: false, by: 'Agent', at: e?.at };
+}
+
+function tile(item) {
+  const notes = item.notes ?? [];
+  const open = notes.filter(n => n.options && questionState(n) === null).length;
+  const count = open ? `${open} question${open > 1 ? 's' : ''}` : notes.length ? `${notes.length} note${notes.length > 1 ? 's' : ''}` : '';
+  const corner = notes.length ? '<span class="corner"></span>' : '';
+  if (!item.file) {
+    return `<div class="tile ghost" data-item="${esc(item.id)}">${corner}<div class="ext"><span>${esc(item.kind === 'input' ? 'INPUT' : 'OUTPUT')}</span><span class="nc">${count}</span></div><div class="fn">${esc(item.name)}</div><div class="meta">${item.kind === 'input' ? 'Missing' : 'Not built yet'}</div></div>`;
+  }
+  const p = provenance(item.file);
+  const v = data.log.filter(e => e.op === 'point' && e.item === item.id && e.file).length;
+  return `<div class="tile ${p.person ? 'person' : 'agent'} ${openItem === item.id ? 'on' : ''}" data-item="${esc(item.id)}">${corner}<div class="ext"><span>${esc(ext(item.file))}${v > 1 ? ' · v' + v : ''}</span><span class="nc">${count}</span></div><div class="fn">${esc(fname(item.file))}</div>${item.headline ? `<div class="hl">${esc(item.headline)}</div>` : ''}${item.source ? `<div class="src">${esc(item.source)}</div>` : ''}<div class="meta"><b>${esc(p.by)}</b> · ${hhmm(p.at)}</div></div>`;
+}
+
+function renderPanes() {
+  if (!data) {
+    $('#panes').innerHTML = `<div class="empty">${cur?.series ? 'No instance yet. Use “+ New instance”.' : 'Pick a series.'}</div>`;
+    return;
+  }
+  const open = data.workspace.status === 'open';
+  let h = '';
+  for (const [pane, kind, title] of [['in', 'input', 'Inputs'], ['out', 'output', 'Outputs']]) {
+    const items = data.workspace.items.filter(i => i.kind === kind);
+    const have = items.filter(i => i.file).length;
+    h += `<section class="pane" data-pane="${pane}"><div class="ph"><h2>${title}</h2><span class="c">${items.length ? `${have} of ${items.length}` : ''}</span>${open ? `<button class="btn" data-act="add" data-pane="${pane}">+ Add files</button>` : ''}</div>`;
+    h += `<div class="grid">${items.map(tile).join('')}</div>`;
+    if (pane === 'in') {
+      const shown = new Set(data.workspace.items.map(i => i.file)), also = new Map();
+      for (const i of data.workspace.items) for (const n of i.notes ?? []) for (const f of n.files ?? []) if (!shown.has(f) && !also.has(f)) also.set(f, i);
+      if (also.size) h += `<div class="also"><div class="ah">Also used</div>${[...also].map(([f, i]) => `<div><a data-act="preview" data-file="${esc(f)}">${esc(fname(f))}</a> <span class="via">· noted on <a data-act="opencard" data-item="${esc(i.id)}">${esc(i.name)}</a></span></div>`).join('')}</div>`;
+    }
+    if (open) h += `<div class="hint">${pane === 'in' ? 'Drop files to add them. Drop onto a file to replace it.' : 'Drop a revised output onto its file.'}</div>`;
+    h += '</section>';
+  }
+  $('#panes').innerHTML = h;
+}
+
+function logLine(e) {
+  const person = e.by !== 'server' && e.by !== 'agent';
+  const w = `<span class="w ${person ? 'p' : ''}">${esc(person ? e.by : e.by === 'agent' ? 'Agent' : 'Server')}</span>`;
+  const item = id => esc(data.workspace.items.find(i => i.id === id)?.name ?? id);
+  const f = e.file ? `<div class="f">${esc(e.file)}</div>` : '';
+  const text = {
+    create: () => `${w} opened the instance${e.from ? `<div class="d">Items carried over from ${esc(e.from)}.</div>` : ''}`,
+    upload: () => `${w} uploaded ${e.pane === 'out' ? 'an output' : 'an input'}${e.onto ? ' onto ' + item(e.onto) : ''}${f}`,
+    point: () => `${w} ${e.file ? 'showed' : 'cleared'} ${item(e.item)}${e.was ? `<div class="d">Replacing ${esc(fname(e.was))}</div>` : ''}${f}`,
+    item: () => `${w} set up ${esc(e.name)}${e.headline ? `<div class="d">${esc(e.headline)}</div>` : ''}${e.source ? `<div class="d">Source: ${esc(e.source)}</div>` : ''}`,
+    note: () => `${w} noted on ${item(e.item)}<div class="d">${e.note.options ? 'Asked: ' : ''}${esc(e.note.text)}</div>`,
+    unnote: () => `${w} removed a note on ${item(e.item)}`,
+    remove: () => `${w} removed ${esc(e.item)} from the screen`,
+    run: () => `Run ${e.run} started`,
+    done: () => `Run ${e.run} finished${e.aborted ? ' (stopped)' : ''} · ${took(e)} · ${usd(e.cost)}${e.summary ? `<div class="d">${esc(e.summary)}</div>` : ''}${e.error ? `<div class="d">${esc(e.error)}</div>` : ''}`,
+    answer: () => `${e.default ? 'Default applied' : w + ' answered'}<div class="d">${esc(e.text)}</div>`,
+    steer: () => `${w} steered<div class="d">${esc(e.text)}</div>`,
+    interrupt: () => `${w} interrupted the run`,
+    close: () => `${w} closed the instance`,
+    abandon: () => `${w} abandoned the instance`,
+  }[e.op]?.() ?? `${w} ${esc(e.op)}`;
+  return `<div class="e"><span class="tm">${hhmm(e.at)}</span><div>${text}</div></div>`;
+}
+
+function renderLog() {
+  $('#log').className = 'log' + (ui.log && data ? ' open' : '');
+  if (!ui.log || !data) return;
+  $('#log').innerHTML = `<div class="lh"><b>Ops log</b><button class="btn" data-act="log">Close</button></div>` + [...data.log].reverse().map(logLine).join('');
+}
+
+function renderAdv() {
+  $('#adv').className = 'adv' + (ui.adv ? ' open' : '');
+  $('#adv').hidden = !data;
+  if (!data) return;
+  const d = lastDone();
+  const cost = data.log.reduce((t, e) => t + (e.cost ?? 0), 0);
+  const s = (data.run ? `Run ${data.run.n} running` : d ? `Run ${d.run} finished ${hhmm(d.at)}${d.summary ? ' · ' + d.summary : ''}` : 'No runs yet') + (cost ? ` · ${usd(cost)} so far` : '');
+  $('#advbar').innerHTML = `<span class="t">Advanced</span><span class="s">${esc(s)}</span><span class="r">${ui.adv ? 'Hide steps' : 'Show steps'}</span>`;
+  if (!ui.adv) return;
+  const trace = $('#trace');
+  const atEnd = trace.scrollTop + trace.clientHeight >= trace.scrollHeight - 30;
+  trace.innerHTML = steps.map(s => s.kind === 'user' ? `<div class="rn">${hhmm(s.at)} · ${esc(s.text)}</div>`
+    : s.kind === 'say' ? `<div class="say">${esc(s.text)}</div>`
+    : `<div class="tl"><b>${esc(s.kind)}</b> ${esc(s.text.length > 300 ? s.text.slice(0, 300) + '…' : s.text)}${s.result ? `<span class="o ${s.error ? 'err' : ''}">→ ${esc(s.result)}</span>` : ''}</div>`).join('') || '<div class="rn">No steps yet.</div>';
+  if (atEnd) trace.scrollTop = trace.scrollHeight;
+}
+
+function renderCard() {
+  const card = $('#card');
+  const item = openItem && data?.workspace.items.find(i => i.id === openItem);
+  if (!item) { card.hidden = true; return; }
+  const open = data.workspace.status === 'open';
+  let h = `<div class="cf">${esc(item.file ? fname(item.file) : item.name)}</div>`;
+  if (item.file) {
+    const p = provenance(item.file);
+    h += `<div class="cp"><b class="${p.person ? 'p' : ''}">${esc(p.by)}</b> ${p.person ? 'uploaded' : 'made'} it at ${hhmm(p.at)} · ${esc(item.name)}${item.source ? `<br>${esc(item.source)}` : ''}</div>`;
+  } else h += `<div class="cp">${item.kind === 'input' ? 'Expected input, not there yet' : 'Output not built yet'}</div>`;
+  for (const n of item.notes ?? []) {
+    h += `<div class="nb">${n.ref ? `<span class="ref">${esc(n.ref)}</span>` : ''}${esc(n.text)}`;
+    if (n.files?.length) h += `<div class="cites">${n.files.map(f => `<a data-act="preview" data-file="${esc(f)}">${esc(fname(f))}</a>`).join('')}</div>`;
+    if (n.options) {
+      const picked = questionState(n);
+      h += `<div class="choices">${n.options.map((o, k) => `<button class="choice ${k === (n.default ?? 0) ? 'def' : ''} ${picked === k ? 'picked' : ''}" data-act="answer" data-note="${esc(n.id)}" data-choice="${k}" ${picked !== null || !open ? 'disabled' : ''}>${esc(o)}</button>`).join('')}</div>`;
+      h += `<div class="by">${picked !== null ? 'Answered' : `If unanswered at close: ${esc(n.options[n.default ?? 0])}`}</div>`;
+    }
+    h += '</div>';
+  }
+  h += '<div class="acts">';
+  if (item.file) h += `<button class="btn" data-act="preview" data-file="${esc(item.file)}" data-item="${esc(item.id)}">Preview</button><a class="btn" href="${fileUrl(item.file)}">Download</a>`;
+  if (open) h += `<button class="btn" data-act="replace" data-item="${esc(item.id)}" data-pane="${item.kind === 'input' ? 'in' : 'out'}">${item.file ? 'Replace…' : 'Upload…'}</button>`;
+  h += `<button class="btn" data-act="uncard" style="margin-left:auto">Close</button></div>`;
+  card.innerHTML = h;
+  card.hidden = false;
+  const t = document.querySelector(`.tile[data-item="${CSS.escape(item.id)}"]`);
+  if (!t || innerWidth <= 800) return;
+  const r = t.getBoundingClientRect(), w = card.offsetWidth, ch = card.offsetHeight;
+  const right = r.right + 10 + w < innerWidth;
+  card.style.left = (right ? r.right + 10 : Math.max(8, Math.min(r.left, innerWidth - w - 8))) + 'px';
+  card.style.top = Math.max(8, Math.min(right ? r.top : r.bottom + 8, innerHeight - ch - 8)) + 'px';
+}
+
+const colName = c => (c >= 26 ? colName(Math.floor(c / 26) - 1) : '') + String.fromCharCode(65 + c % 26);
+const num = v => v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+function sheetTable(s, first) {
+  const noted = new Map();
+  for (const n of pv.notes) {
+    const r = (n.ref ?? '').match(/^(?:'?([^'!]+)'?!)?\$?([A-Z]{1,3})\$?(\d+)/);
+    if (!r || (r[1] ? r[1] !== s.name : !first)) continue;
+    const key = `${+r[3] - 1},${[...r[2]].reduce((t, ch) => t * 26 + ch.charCodeAt(0) - 64, 0) - 1}`;
+    noted.set(key, (noted.has(key) ? noted.get(key) + '\n\n' : '') + n.text);
+  }
+  const width = Math.max(0, ...s.rows.map(r => r.length));
+  let h = `<table class="sh"><tr><th></th>${Array.from({ length: width }, (_, c) => `<th>${colName(c)}</th>`).join('')}</tr>`;
+  s.rows.forEach((row, r) => {
+    h += `<tr><td class="rn">${r + 1}</td>`;
+    for (let c = 0; c < width; c++) {
+      const v = row[c], note = noted.get(`${r},${c}`);
+      const cls = `${typeof v === 'number' ? 'num' : ''} ${v && typeof v === 'object' ? 'fx' : ''} ${note ? 'noted' : ''}`.trim();
+      const text = v == null ? '' : typeof v === 'object' ? v.f : typeof v === 'number' ? num(v) : v;
+      h += `<td${cls ? ` class="${cls}"` : ''}${note ? ` data-act="cellnote" data-note="${esc(note)}"` : ''}>${esc(text)}</td>`;
+    }
+    h += '</tr>';
+  });
+  return h + '</table>' + (s.truncated ? `<div class="empty">Showing the first ${s.rows.length} rows.</div>` : '');
+}
+
+function renderPv() {
+  $('#pv').hidden = !pv;
+  if (!pv) return;
+  $('#pv').className = 'pv' + (pv.vis ? ' small' : '');
+  let h = `<div class="pvh"><b>${esc(pv.title)}</b>${pv.path ? `<a class="btn" href="${fileUrl(pv.path)}">Download</a>` : ''}<button class="btn" data-act="unpv">Close</button></div>`;
+  if (pv.sheets) {
+    if (pv.sheets.length > 1) h += `<div class="tabs">${pv.sheets.map((s, k) => `<button class="btn ${k === pv.sheet ? 'sel' : ''}" data-act="sheet" data-k="${k}">${esc(s.name)}</button>`).join('')}</div>`;
+    h += `<div class="pvb">${sheetTable(pv.sheets[pv.sheet], pv.sheet === 0)}</div>`;
+  } else if (pv.email) {
+    const m = pv.email;
+    h += `<div class="pvb"><pre>${esc(Object.entries(m.headers).map(([k, v]) => `${k}: ${v}`).join('\n') + (m.attachments.length ? `\nAttachments: ${m.attachments.join(', ')}` : '') + '\n\n' + m.text)}</pre></div>`;
+  } else if (pv.image) h += `<div class="pvb"><img src="${fileUrl(pv.path)}" alt=""></div>`;
+  else if (pv.text !== undefined) h += `<div class="pvb"><pre>${esc(pv.text)}</pre></div>`;
+  else if (pv.vis) h += `<div class="pvb vl">${['*', ...pv.vis.others].map(n => `<label><input type="checkbox" value="${esc(n)}" ${pv.vis.chosen.includes(n) ? 'checked' : ''}> ${n === '*' ? 'All series' : esc(n)}</label>`).join('')}<div><button class="btn primary" data-act="savevis">Save</button></div></div>`;
+  else h += `<div class="pvb"><div class="empty">No preview for this kind of file. Download it instead.</div></div>`;
+  $('#pv').innerHTML = h + '<div class="pvn" id="pvn"></div>';
+}
+
+async function preview(path, item) {
+  pv = { title: fname(path), path, notes: item?.notes ?? [], sheet: 0, image: /\.(png|jpe?g|gif|webp)$/i.test(path) };
+  if (/\.(xlsx|xlsm|xls|csv|eml)$/i.test(path)) Object.assign(pv, await api(fileUrl(path, 'preview')));
+  renderPv();
+}
+
+async function showProcess() {
+  const from = data.log.find(e => e.op === 'create').from;
+  for (const [label, path] of [[cur.label, 'working/process.md'], [from, `../${from}/working/process.md`]]) {
+    const r = label && await fetch(fileUrl(path));
+    if (r?.ok) { pv = { title: `Process, as of ${label}`, path, text: await r.text() }; return renderPv(); }
+  }
+  pv = { title: 'Process', text: 'No process.md yet.' };
+  renderPv();
+}
+
+async function upload(files, pane, onto) {
+  const by = who();
+  for (const f of files) {
+    await api(`${instPath()}/upload?by=${enc(by)}&pane=${pane}&name=${enc(f.name)}${onto ? '&onto=' + enc(onto) : ''}`, { method: 'POST', body: f });
+  }
+  await refresh();
+}
+
+document.addEventListener('click', async ev => {
+  if (!ev.target.closest('#side, [data-act=menu]') || ev.target.closest('#side a')) $('#side').classList.remove('open');
+  const el = ev.target.closest('[data-act], .tile, #advbar');
+  if (!el) {
+    if (!ev.target.closest('#card, #pv')) { openItem = null; renderCard(); renderPanes(); }
+    return;
+  }
+  if (el.id === 'advbar') { ui.adv = !ui.adv; if (ui.adv) steps = await api(instPath() + '/steps'); return renderAdv(); }
+  if (el.classList.contains('tile')) { openItem = openItem === el.dataset.item ? null : el.dataset.item; renderPanes(); return renderCard(); }
+  const act = el.dataset.act;
+  if (act === 'menu') $('#side').classList.toggle('open');
+  if (act === 'log') { ui.log = !ui.log; renderLog(); renderBar(); }
+  if (act === 'uncard') { openItem = null; renderCard(); renderPanes(); }
+  if (act === 'opencard') { openItem = el.dataset.item; renderPanes(); renderCard(); }
+  if (act === 'preview') await preview(el.dataset.file, data.workspace.items.find(i => i.id === el.dataset.item));
+  if (act === 'process') await showProcess();
+  if (act === 'unpv') { pv = null; renderPv(); }
+  if (act === 'visibility') {
+    const c = tree.find(c => c.client === cur.client), s = c.series.find(s => s.series === cur.series);
+    pv = { title: `Who can read ${s.series}`, vis: { others: c.series.map(x => x.series).filter(n => n !== s.series), chosen: s.visible_to } };
+    renderPv();
+  }
+  if (act === 'savevis') {
+    const visible_to = [...document.querySelectorAll('#pv input:checked')].map(i => i.value);
+    await api(seriesPath(cur), { method: 'PUT', body: JSON.stringify({ visible_to }) });
+    pv = null;
+    renderPv();
+    await refresh();
+  }
+  if (act === 'sheet') { pv.sheet = Number(el.dataset.k); renderPv(); }
+  if (act === 'cellnote') $('#pvn').textContent = el.dataset.note;
+  if (act === 'toggle-closed') { showClosed = !showClosed; renderSide(); }
+  if (act === 'add' || act === 'replace') {
+    const p = $('#picker');
+    p.dataset.pane = el.dataset.pane;
+    p.dataset.onto = act === 'replace' ? el.dataset.item : '';
+    p.multiple = act === 'add';
+    p.value = '';
+    p.click();
+  }
+  if (act === 'answer') {
+    await api(`${instPath()}/answer?by=${enc(who())}`, { method: 'POST', body: JSON.stringify({ note: el.dataset.note, choice: Number(el.dataset.choice) }) });
+    await refresh();
+  }
+  if (act === 'close') {
+    const qs = data.workspace.items.flatMap(i => i.notes ?? []).filter(n => n.options && questionState(n) === null);
+    const msg = `Close ${cur.label}? It becomes an example for later instances.` + (qs.length ? '\n\nUnanswered questions take their defaults:\n' + qs.map(n => `• ${n.options[n.default ?? 0]}`).join('\n') : '');
+    if (!confirm(msg)) return;
+    await api(`${instPath()}/close?by=${enc(who())}`, { method: 'POST' });
+    await refresh();
+  }
+  if (act === 'abandon') {
+    if (!confirm(`Abandon ${cur.label}? It stays as it is, but isn't an example or a starting point for later instances.`)) return;
+    await api(`${instPath()}/abandon?by=${enc(who())}`, { method: 'POST' });
+    await refresh();
+  }
+  if (act === 'new-instance') {
+    const label = (prompt('Label for the new instance, such as a date:') || '').trim();
+    if (!label) return;
+    await api(`${seriesPath(cur)}/${enc(label)}?by=${enc(who())}`, { method: 'POST' });
+    go(cur.client, cur.series, label);
+  }
+  if (act === 'new-series') {
+    const name = (prompt('Name of the new series:') || '').trim();
+    if (!name) return;
+    await api(`/api/${enc(el.dataset.client)}/${enc(name)}`, { method: 'POST' });
+    go(el.dataset.client, name);
+  }
+});
+
+$('#picker').addEventListener('change', e => upload([...e.target.files], e.target.dataset.pane, e.target.dataset.onto));
+$('#compose').addEventListener('submit', async e => {
+  e.preventDefault();
+  const text = $('#steer').value.trim();
+  if (!text) return;
+  await api(`${instPath()}/steer?by=${enc(who())}`, { method: 'POST', body: JSON.stringify({ text }) });
+  $('#steer').value = '';
+  await refresh();
+});
+$('#interrupt').addEventListener('click', async () => {
+  if (!data?.run) return;
+  await api(`${instPath()}/interrupt?by=${enc(who())}`, { method: 'POST' });
+  await refresh();
+});
+
+for (const type of ['dragover', 'dragleave', 'drop']) {
+  $('#panes').addEventListener(type, e => {
+    const pane = e.target.closest('.pane'), t = e.target.closest('.tile');
+    if (!pane || data?.workspace.status !== 'open') return;
+    e.preventDefault();
+    document.querySelectorAll('.drag').forEach(x => x.classList.remove('drag'));
+    if (type === 'dragover') (t ?? pane).classList.add('drag');
+    if (type === 'drop') upload([...e.dataTransfer.files], pane.dataset.pane, t?.dataset.item);
+  });
+}
+
+addEventListener('hashchange', () => { openItem = null; pv = null; renderPv(); $('#side').classList.remove('open'); refresh(); });
+addEventListener('resize', renderCard);
+refresh();
+setInterval(() => { if (!document.hidden) refresh(); }, 4000);
+</script>
+</body>
+</html>
