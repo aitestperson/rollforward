@@ -66,8 +66,7 @@ test('a new instance starts from the last closed one; a new series can be made',
   assert.ok(await shown(monthly));
 });
 
-test('an upload lands read-only, becomes an item, and starts a run that ends with an error', async () => {
-  // A run that fails at startup is retried at once, forever (a server bug), which holds its series busy. So this runs in Monthly rec, not in the series the later tests use.
+test('an upload lands read-only, becomes an item, and starts one run that ends with an error', async () => {
   const bytes = 'a,b\n1,2\n', label = '2026-09-13';
   assert.equal((await call('POST', at(monthly, label))).status, 200);
   assert.equal((await call('POST', `${at(monthly, label, 'upload')}?by=t&pane=in&name=x.csv`, bytes)).status, 200);
@@ -85,7 +84,8 @@ test('an upload lands read-only, becomes an item, and starts a run that ends wit
   }
   assert.ok(done, 'run ended');
   assert.ok(done.error, 'no model reachable, so the run carries an error');
-  assert.equal((await call('GET', '/api')).status, 200);
+  await new Promise(r => setTimeout(r, 1000));
+  assert.equal((await json(at(monthly, label))).log.filter((e: { op: string }) => e.op === 'run').length, 1, 'a run that never started is not retried');
 });
 
 test('duplicate copies a closed instance into an open one, once', async () => {
