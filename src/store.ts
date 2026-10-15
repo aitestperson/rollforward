@@ -55,6 +55,14 @@ export function createInstance(seriesDir: string, label: string, by: string): In
   return inst;
 }
 
+export function renameInstance(inst: Instance, label: string): Instance {
+  const dir = join(inst.series(), safeName(label));
+  if (existsSync(dir)) throw new HttpError(409, `${label} exists`);
+  renameSync(inst.dir, dir);
+  cache.delete(inst.dir);
+  return instance(dir);
+}
+
 export function duplicateInstance(src: Instance, label: string, by: string): Instance {
   const dir = join(src.series(), safeName(label));
   if (existsSync(dir)) throw new HttpError(409, `${label} exists`);

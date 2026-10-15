@@ -50,6 +50,8 @@ a { color: inherit; }
 .menu { display: none; border: 1px solid var(--rule-2); background: var(--sheet); border-radius: var(--r1); padding: 6px 10px; }
 .crumb { font-size: 13px; color: var(--ink-3); }
 .bar h1 { margin: 2px 0 0; font-size: 20px; font-weight: 600; letter-spacing: -.01em; }
+.ren { all: unset; cursor: pointer; color: var(--ink-3); font-size: 15px; font-weight: 400; margin-left: 6px; }
+.ren:hover { color: var(--ink); }
 .state { margin-left: auto; font-size: 13px; color: var(--ink-2); display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .btn { border: 1px solid var(--rule-2); background: var(--sheet); color: var(--ink); border-radius: var(--r1); padding: 7px 12px; font-size: 13px; font-weight: 500; white-space: nowrap; text-decoration: none; display: inline-block; }
 .btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
@@ -115,6 +117,7 @@ a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: 
 .sh td.rn { position: sticky; left: 0; background: var(--paper); color: var(--ink-3); text-align: right; }
 .sh td.num { text-align: right; }
 .sh td.fx { color: var(--ink-3); font-style: italic; }
+.sh td.chg { background: #fdf0c4; cursor: pointer; }
 .sh td.noted { position: relative; cursor: pointer; }
 .sh td.noted::after { content: ''; position: absolute; top: -1px; right: -1px; border-top: 9px solid var(--ink-3); border-left: 9px solid transparent; }
 .sh td.noted.q::after { border-top-color: var(--note); }
@@ -153,6 +156,7 @@ a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: 
 .trace .rh:first-child { border-top: 0; }
 .trace .trig { font-size: 12.5px; color: var(--ink-2); margin: 2px 0 6px; }
 .trace .say { margin: 10px 0; color: var(--ink); white-space: pre-wrap; }
+.trace .say.reply { border-left: 3px solid var(--ink); padding-left: 12px; }
 .trace .say table { border-collapse: collapse; margin: 4px 0; white-space: normal; }
 .trace .say td { border: 1px solid var(--rule); padding: 3px 8px; font-size: 12.5px; }
 .trace .say tr:first-child td { font-weight: 600; background: var(--sheet); }
@@ -335,7 +339,7 @@ function lastDone() { return data.log.findLast(e => e.op === 'done'); }
 
 function renderBar() {
   let h = `<button class="menu" data-act="menu">☰</button>`;
-  h += `<div><div class="crumb">${esc(cur?.client ?? '')}${cur?.series ? ' · ' + esc(cur.series) : ''}</div><h1>${esc(cur?.label ?? 'No instance')}</h1></div>`;
+  h += `<div><div class="crumb">${esc(cur?.client ?? '')}${cur?.series ? ' · ' + esc(cur.series) : ''}</div><h1>${esc(cur?.label ?? 'No instance')}${data?.workspace.status === 'open' ? '<button class="ren" data-act="rename" title="Rename">\u270E</button>' : ''}</h1></div>`;
   if (data) {
     const d = lastDone();
     const state = data.workspace.status !== 'open' ? `${data.workspace.status === 'closed' ? 'Closed' : 'Abandoned'} · read-only` : data.run ? `<span class="spin"></span>Agent working · run ${data.run.n}` : data.queued ? '\u29D7 Queued' : d ? `Agent idle · last run ${hhmm(d.at)}` : 'Waiting for files';
@@ -424,6 +428,8 @@ function logText(e) {
     interrupt: () => `${w} interrupted the run`,
     close: () => `${w} closed the instance`,
     abandon: () => `${w} abandoned the instance`,
+    reply: () => `${w} replied<div class="d">${esc(e.text)}</div>`,
+    rename: () => `${w} renamed the instance from ${esc(e.from)}`,
     duplicate: () => `${w} made this instance as a copy of ${esc(e.from)}`,
   }[e.op]?.() ?? `${w} ${esc(e.op)}`;
 }
@@ -487,11 +493,14 @@ function groupHtml(g, live) {
 }
 
 function traceHtml() {
-  let h = '', g = [], run = 0;
+  let h = '', g = [], run = 0, ri = 0;
+  const replies = data.log.filter(e => e.op === 'reply');
   const flush = live => { if (g.length) h += groupHtml(g, live); g = []; };
   steps.forEach((s, i) => {
-    if (s.kind !== 'user' && s.kind !== 'say') return void g.push([s, i]);
+    const reply = s.kind === 'bash' && /\brf reply\b/.test(s.text);
+    if (s.kind !== 'user' && s.kind !== 'say' && !reply) return void g.push([s, i]);
     flush(false);
+    if (reply) return void (h += `<div class="say reply">${md(replies[ri++]?.text ?? s.text)}</div>`);
     if (s.kind === 'say') return void (h += `<div class="say">${md(s.text)}</div>`);
     const n = Number(s.text.match(/run (\d+)\./)[1]);
     if (n !== run) {
@@ -546,6 +555,8 @@ function renderCard() {
 const colName = c => (c >= 26 ? colName(Math.floor(c / 26) - 1) : '') + String.fromCharCode(65 + c % 26);
 const num = v => v.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
+const cellText = v => v == null ? '' : typeof v === 'object' ? v.f : typeof v === 'number' ? num(v) : v;
+
 function sheetTable(s, first) {
   const noted = new Map(), asks = new Set();
   for (const n of pv.notes) {
@@ -555,15 +566,17 @@ function sheetTable(s, first) {
     noted.set(key, (noted.has(key) ? noted.get(key) + '\n\n' : '') + n.text);
     if (n.options && questionState(n) === null) asks.add(key);
   }
+  const old = pv.cmp && (pv.old.find(o => o.name === s.name) ?? pv.old[pv.sheets.indexOf(s)]);
   const width = Math.max(0, ...s.rows.map(r => r.length));
   let h = `<table class="sh"><tr><th></th>${Array.from({ length: width }, (_, c) => `<th>${colName(c)}</th>`).join('')}</tr>`;
   s.rows.forEach((row, r) => {
     h += `<tr><td class="rn">${r + 1}</td>`;
     for (let c = 0; c < width; c++) {
-      const v = row[c], note = noted.get(`${r},${c}`);
-      const cls = `${typeof v === 'number' ? 'num' : ''} ${v && typeof v === 'object' ? 'fx' : ''} ${note ? 'noted' : ''} ${asks.has(`${r},${c}`) ? 'q' : ''}`.trim();
-      const text = v == null ? '' : typeof v === 'object' ? v.f : typeof v === 'number' ? num(v) : v;
-      h += `<td${cls ? ` class="${cls}"` : ''}${note ? ` data-act="cellnote" data-note="${esc(note)}"` : ''}>${esc(text)}</td>`;
+      const v = row[c], was = old?.rows[r]?.[c] ?? null;
+      const changed = old && JSON.stringify(was) !== JSON.stringify(v ?? null);
+      const note = [noted.get(`${r},${c}`), changed ? `Was: ${cellText(was) || '(empty)'}` : ''].filter(Boolean).join('\n\n');
+      const cls = `${typeof v === 'number' ? 'num' : ''} ${v && typeof v === 'object' ? 'fx' : ''} ${noted.has(`${r},${c}`) ? 'noted' : ''} ${asks.has(`${r},${c}`) ? 'q' : ''} ${changed ? 'chg' : ''}`.trim();
+      h += `<td${cls ? ` class="${cls}"` : ''}${note ? ` data-act="cellnote" data-note="${esc(note)}"` : ''}>${esc(cellText(v))}</td>`;
     }
     h += '</tr>';
   });
@@ -574,7 +587,7 @@ function renderPv() {
   $('#pv').hidden = !pv;
   if (!pv) return;
   $('#pv').className = 'pv' + (pv.settings ? ' small' : '');
-  let h = `<div class="pvh"><b>${esc(pv.title)}</b>${pv.path ? `<a class="btn" href="${fileUrl(pv.path)}">Download</a>` : ''}<button class="btn" data-act="unpv">Close</button></div>`;
+  let h = `<div class="pvh"><b>${esc(pv.title)}</b>${pv.sheets && /\.(xlsx|xlsm|xls|csv)$/i.test(pv.was ?? '') ? `<button class="btn ${pv.cmp ? 'sel' : ''}" data-act="compare">${pv.cmp ? `Changes since ${esc(fname(pv.was))}` : 'Compare with previous'}</button>` : ''}${pv.path ? `<a class="btn" href="${fileUrl(pv.path)}">Download</a>` : ''}<button class="btn" data-act="unpv">Close</button></div>`;
   if (pv.sheets) {
     if (pv.sheets.length > 1) h += `<div class="tabs">${pv.sheets.map((s, k) => `<button class="btn ${k === pv.sheet ? 'sel' : ''}" data-act="sheet" data-k="${k}">${esc(s.name)}</button>`).join('')}</div>`;
     h += `<div class="pvb">${sheetTable(pv.sheets[pv.sheet], pv.sheet === 0)}</div>`;
@@ -595,7 +608,7 @@ function renderPv() {
 }
 
 async function preview(path, item) {
-  pv = { title: fname(path), path, notes: item?.notes ?? [], sheet: 0, image: /\.(png|jpe?g|gif|webp|svg)$/i.test(path) };
+  pv = { title: fname(path), path, notes: item?.notes ?? [], sheet: 0, image: /\.(png|jpe?g|gif|webp|svg)$/i.test(path), was: item && data.log.findLast(e => e.op === 'point' && e.item === item.id && e.file === path)?.was };
   if (/\.(xlsx|xlsm|xls|csv|eml)$/i.test(path)) Object.assign(pv, await api(fileUrl(path, 'preview')));
   renderPv();
 }
@@ -666,6 +679,17 @@ document.addEventListener('click', async ev => {
     renderPv();
     if (name !== cur.series) return go(cur.client, name, cur.label);
     await refresh();
+  }
+  if (act === 'rename') {
+    const label = (prompt('New label:', cur.label) || '').trim();
+    if (!label || label === cur.label) return;
+    await api(`${instPath()}/rename?as=${enc(label)}&by=${enc(who())}`, { method: 'POST' });
+    go(cur.client, cur.series, label);
+  }
+  if (act === 'compare') {
+    pv.old ??= (await api(fileUrl(pv.was, 'preview'))).sheets;
+    pv.cmp = !pv.cmp;
+    renderPv();
   }
   if (act === 'duplicate') {
     const label = (prompt('Label for the copy:', `${cur.label} copy`) || '').trim();

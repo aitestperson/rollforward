@@ -31,15 +31,17 @@
   - Dropping onto a tile replaces that item's file; dropping onto the pane adds an item. The server places the file that way at once, even mid-run, and the agent then decides. For example, it can treat a pane drop as a replacement; it says so in a note.
   - There is no text box. People drop files, click answers and close the instance.
 - **State hints:** a spinner marks the running instance in the sidebar and the top bar, with a stripe along Outputs; ⧗ marks one waiting to run. A tile flashes when it changes and keeps a black dot until opened. An unanswered question's corner pulses, and an answer shows a spinner until the agent has read it. Uploads show progress, errors show as a toast, and abandoned instances are struck through.
-- **Ops log:** a side panel listing who did what, when: uploads, runs, every change the screen showed, answers, steers and the close. Earlier files open from here.
+- **Ops log:** a side panel listing who did what, when: uploads, runs, every change the screen showed, answers, steers, the agent's replies and the close. Earlier files open from here.
+- **Preview** shows a spreadsheet with its noted cells marked. If the file replaced an earlier one, "Compare with previous" highlights the cells that changed, and a click shows the old value.
 - **Advanced:** a bar along the bottom that expands over the panes, like VS Code's terminal panel.
   - It shows every step the agent takes, like Claude Code: each run starts with what triggered it, plus its time and cost. The agent's messages read as text, and each tool call is one line with a short result. Consecutive calls fold into a summary such as "Read 3 files, ran 2 commands". Each call expands to its full output, and failures are red. During a run it is live. Past runs are read from the instance's Pi session file.
-  - It is the only place to type. **Steer** sends the agent a message, and starts a run if none is going. **Interrupt** stops the run.
+  - It is the only place to type. **Steer** sends the agent a message, and starts a run if none is going. **Interrupt** stops the run. The agent answers a question with `rf reply`, which shows in the ops log and here, never as a note.
 - **New series:** give it a name. Then import past instances one at a time, in label order: create the instance, drop its inputs on the left and what was actually sent on the right, let the agent rebuild each output and note what it can't derive, and close it.
 - **New instance:** give it a label. It starts with the items of the most recently closed instance as dashed tiles.
 - **Close instance:** freezes the instance as an example. Unanswered questions take their defaults, and the dialog lists which. It is disabled while a run is going.
 - **Abandon:** the other way an instance ends. It stays as it is, but it isn't an example, never becomes a new instance's starting point, and applies no defaults. It is also disabled while a run is going. Closed and abandoned instances both show under "Show closed".
 - **Duplicate:** a closed or abandoned instance can be copied, under a new label, into an open instance. The copy has its files, screen and log, but not its agent session, and its log records the copy as `duplicate`.
+- **Rename:** an open instance's label changes from the pencil by its title, between runs. The log records `rename`.
 - **Series settings:** the series' name, and its visibility: the other series that can see it. Renaming moves the series folder, and waits until no run is going.
 - **Names:** until M3 adds sign-in, the page asks for a name once and keeps it in the browser.
 
@@ -66,6 +68,7 @@ Clients are folders on the host's disk. There is no database.
 - **`working/` belongs to the agent,** which may do anything there with one limit. A file the screen has shown never changes again: the server makes it read-only and logs its hash, so a new version gets a new name.
 - **`rf`** is a small command on the agent's `PATH`:
   - `rf show` prints the workspace, including its `rev`, which the server bumps on every change.
+  - `rf reply TEXT` answers a person's question; the server logs it as `reply`.
   - `rf put FILE` replaces the workspace with FILE. The server rejects it if its `rev` isn't current, because someone changed the workspace since the agent read it; the agent then re-reads and merges. It also rejects an invalid document, listing the reasons.
   - **Valid** means:
     - every item has a unique id, a name, and a kind of input or output;
@@ -109,7 +112,7 @@ The schemas are loose, and unknown fields are ignored, so the agent and the UI c
       ]
     }
 
-**`log.jsonl`** has one line per event. `seq` orders the lines, and `by` is a person's name, "server" or "agent". The ops are `create`, `upload`, `point`, `item`, `note`, `unnote`, `remove`, `run`, `done`, `answer`, `steer`, `interrupt`, `close`, `abandon` and `duplicate`. `done` carries the run's model cost in USD. Here `point` means an item now shows a file:
+**`log.jsonl`** has one line per event. `seq` orders the lines, and `by` is a person's name, "server" or "agent". The ops are `create`, `upload`, `point`, `item`, `note`, `unnote`, `remove`, `run`, `done`, `answer`, `steer`, `interrupt`, `close`, `abandon`, `duplicate`, `rename` and `reply`. `done` carries the run's model cost in USD. Here `point` means an item now shows a file:
 
     {"seq": 40, "at": "2026-08-24T15:02:00Z", "by": "alex", "op": "upload", "file": "upload/Larkfield AR aging 082426_2.xlsx", "pane": "in", "onto": null, "sha256": "9f2c…"}
     {"seq": 41, "at": "2026-08-24T15:02:00Z", "by": "server", "op": "point", "item": "u40", "file": "upload/Larkfield AR aging 082426_2.xlsx"}

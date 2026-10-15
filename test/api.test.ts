@@ -102,6 +102,14 @@ test('duplicate copies a closed instance into an open one, once', async () => {
   assert.equal((await call('POST', dup)).status, 409);
 });
 
+test('rename moves an open instance and logs it; an existing label is refused', async () => {
+  const rename = (label: string, to: string) => call('POST', `${at(series, label, 'rename')}?as=${encodeURIComponent(to)}`);
+  assert.equal((await rename('2026-08-30 copy', '2026-08-30 rework')).status, 200);
+  assert.equal(existsSync(join(root, 'larkfield', series, '2026-08-30 copy')), false);
+  assert.deepEqual((await json(at(series, '2026-08-30 rework'))).log.at(-1).from, '2026-08-30 copy');
+  assert.equal((await rename('2026-08-30 rework', '2026-09-06')).status, 409);
+});
+
 test('close and abandon end an open instance; a closed one takes no actions', async () => {
   assert.equal((await call('POST', at(series, '2026-09-06', 'close'))).status, 200);
   const closed = await json(at(series, '2026-09-06'));

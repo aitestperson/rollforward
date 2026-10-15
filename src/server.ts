@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { basename, dirname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createInstance, duplicateInstance, forget, HttpError, instance, instances, isPerson, safeName, type Entry, type Instance } from './store.ts';
+import { createInstance, duplicateInstance, forget, renameInstance, HttpError, instance, instances, isPerson, safeName, type Entry, type Instance } from './store.ts';
 import { startRun, type Run } from './runner.ts';
 
 const root = resolve(process.argv[2]);
@@ -127,6 +127,7 @@ async function agent(req: IncomingMessage, res: ServerResponse, url: URL) {
   if (!a) throw new HttpError(401, 'no run for this token');
   if (url.pathname === '/agent/workspace' && req.method === 'GET') return send(res, 200, a.inst.doc);
   if (url.pathname === '/agent/workspace' && req.method === 'PUT') return send(res, 200, `saved, rev ${a.inst.put((await body(req)).toString())}`);
+  if (url.pathname === '/agent/reply' && req.method === 'POST') return send(res, 200, `replied, seq ${a.inst.append('agent', 'reply', { text: (await body(req)).toString() }).seq}`);
   throw new HttpError(404, 'not found');
 }
 
@@ -263,6 +264,11 @@ async function people(req: IncomingMessage, res: ServerResponse, url: URL) {
     inst.append(by, 'interrupt');
     mine.interrupted = true;
     await mine.run.interrupt();
+    return send(res, 200, 'ok');
+  } else if (action === 'rename') {
+    if (mine || debounce.has(inst.dir)) throw new HttpError(409, 'wait for the run to end');
+    const label = url.searchParams.get('as') ?? '';
+    renameInstance(inst, label).append(by, 'rename', { from: basename(inst.dir) });
     return send(res, 200, 'ok');
   } else if (action === 'close' || action === 'abandon') {
     if (mine) throw new HttpError(409, 'wait for the run to end');
