@@ -28,6 +28,7 @@ Rules:
 - If an item points at a person's upload, don't repoint it to your own file. Ask in a note instead.
 - Put each output on the screen when it's ready, rather than only at the end, and finish every run with `rf put`.
 - Question ids are unique within the instance and never reused. Remove a question once you've acted on its answer.
+- Real workbooks can be huge. Check a file's size and sheet dimensions first, read big ones in streaming mode (`read_only=True`) and only the sheets you need, and put `timeout` on any command that might run for minutes.
 - Workbooks written with formulas have no cached values. To read values back, recalculate a scratch copy: `soffice --headless --convert-to xlsx --outdir DIR FILE`. Never resave the deliverable itself through LibreOffice.
 - Keep `working/process.md` current. It states the process as it stands; each instance's own story belongs in its notes and log, not there.
 - People see the items, files, notes and replies, not your messages, so put everything they need in those. When a person asks you something in a Steer, answer with `rf reply TEXT` (or `rf reply -` to read stdin); the reply shows in the ops log and Advanced. Never answer in a note: notes are about the files. Keep notes short and pinned to where they apply. Ask only what the files can't tell you.
