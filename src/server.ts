@@ -134,6 +134,11 @@ function dirs(path: string): string[] {
   return existsSync(path) ? readdirSync(path).filter(n => !n.startsWith('.') && statSync(join(path, n)).isDirectory()).sort() : [];
 }
 
+function queued(inst: Instance): boolean {
+  const a = active.get(inst.series());
+  return a?.inst !== inst && inst.doc.status === 'open' && (debounce.has(inst.dir) || (!!a && pending(inst, seenBefore(inst)).length > 0));
+}
+
 function questions(inst: Instance): number {
   if (inst.doc.status !== 'open') return 0;
   return inst.doc.items.flatMap(i => i.notes ?? []).filter(n => n.id && n.options && !inst.answered(n.id)).length;
@@ -145,7 +150,7 @@ function tree() {
     series: dirs(join(root, client)).map(series => ({
       series, visible_to: visibleTo(join(root, client, series)), reads: readable(join(root, client, series)),
       instances: instances(join(root, client, series)).map(i => ({
-        label: basename(i.dir), status: i.doc.status, running: active.get(i.series())?.inst === i, questions: questions(i),
+        label: basename(i.dir), status: i.doc.status, running: active.get(i.series())?.inst === i, queued: queued(i), questions: questions(i),
       })),
     })),
   }));
@@ -188,9 +193,10 @@ async function file(res: ServerResponse, url: URL, preview: boolean) {
     res.writeHead(200, { 'content-type': 'application/json' });
     return void res.end(stdout);
   }
-  const image = rel.match(/\.(png|jpe?g|gif|webp)$/i)?.[1].toLowerCase().replace('jpg', 'jpeg');
+  const image = rel.match(/\.(png|jpe?g|gif|webp|svg)$/i)?.[1].toLowerCase().replace('jpg', 'jpeg').replace('svg', 'svg+xml');
   res.writeHead(200, {
     'content-type': image ? `image/${image}` : 'application/octet-stream', 'x-content-type-options': 'nosniff',
+    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
     'content-disposition': `${image ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(basename(rel))}`,
   });
   createReadStream(path).pipe(res);
@@ -236,7 +242,7 @@ async function people(req: IncomingMessage, res: ServerResponse, url: URL) {
   const inst = instance(dir);
   const a = active.get(seriesDir);
   const mine = a?.inst === inst ? a : undefined;
-  if (!action) return send(res, 200, { workspace: inst.doc, log: inst.log, run: mine ? { n: mine.n } : null });
+  if (!action) return send(res, 200, { workspace: inst.doc, log: inst.log, run: mine ? { n: mine.n } : null, queued: queued(inst) });
   if (action === 'steps') return send(res, 200, steps(inst));
   if (req.method !== 'POST') throw new HttpError(405, 'POST only');
   if (action === 'duplicate') {

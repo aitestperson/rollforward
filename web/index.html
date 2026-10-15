@@ -30,6 +30,7 @@ a { color: inherit; }
 .inst { padding: 5px 8px 5px 20px; color: var(--ink-2); font-size: 13px; }
 .inst.on { background: #e7eaee; color: var(--ink); font-weight: 500; }
 .inst .q { color: var(--note); }
+.inst.abandoned > span:first-child { text-decoration: line-through; }
 .quiet { display: block; padding: 5px 8px 5px 20px; font-size: 12px; color: var(--ink-3); background: none; border: 0; text-align: left; }
 .vl { padding: 14px 16px; display: grid; gap: 10px; align-content: start; font-size: 13.5px; }
 .vl h3 { margin: 4px 0 0; font-size: 13px; font-weight: 600; }
@@ -50,7 +51,6 @@ a { color: inherit; }
 .crumb { font-size: 13px; color: var(--ink-3); }
 .bar h1 { margin: 2px 0 0; font-size: 20px; font-weight: 600; letter-spacing: -.01em; }
 .state { margin-left: auto; font-size: 13px; color: var(--ink-2); display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-.pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 3px rgba(21,24,29,.12); }
 .btn { border: 1px solid var(--rule-2); background: var(--sheet); color: var(--ink); border-radius: var(--r1); padding: 7px 12px; font-size: 13px; font-weight: 500; white-space: nowrap; text-decoration: none; display: inline-block; }
 .btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
 .btn.commit { background: var(--person); border-color: var(--person); color: #fff; }
@@ -59,7 +59,10 @@ a { color: inherit; }
 .btn.sel { background: var(--paper); box-shadow: inset 0 1px 2px rgba(0,0,0,.08); }
 
 .panes { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; overflow: auto; padding-bottom: 46px; }
-.pane { padding: 22px 28px 20px; display: flex; flex-direction: column; }
+.pane { padding: 22px 28px 20px; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+.pane.busy::before { content: ''; position: absolute; top: 0; left: -30%; width: 30%; height: 2px; background: var(--ink); animation: stripe 1.4s ease-in-out infinite; }
+@keyframes stripe { to { left: 100%; } }
+.pane.drag::after { content: '+ Add'; position: absolute; top: 20px; right: 28px; font-weight: 600; color: var(--person); }
 .pane + .pane { border-left: 1px solid var(--rule); }
 .pane.drag { background: var(--person-bg); }
 .ph { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
@@ -78,6 +81,16 @@ a { color: inherit; }
 .corner { position: absolute; top: -1px; right: -1px; width: 0; height: 0; border-top: 12px solid var(--note); border-left: 12px solid transparent; border-top-right-radius: var(--r1); }
 .tile.ghost { background: transparent; border: 1px dashed var(--rule-2); }
 .tile.ghost .fn { color: var(--ink-2); font-weight: 400; }
+.tile.drag::after { content: '\27F3  Replace'; position: absolute; inset: 0; display: grid; place-items: center; background: rgba(255,255,255,.88); font-weight: 600; }
+.tile.fresh::before { content: ''; position: absolute; top: 9px; left: -4px; width: 7px; height: 7px; border-radius: 50%; background: var(--note); }
+.tile.flash { animation: flash 1.4s ease-out; }
+@keyframes flash { from { box-shadow: 0 0 0 4px var(--rule-2); } }
+.corner.ask { animation: ask 1.6s ease-in-out infinite; }
+@keyframes ask { 50% { opacity: .3; } }
+.prog { margin-top: auto; height: 3px; background: var(--rule); border-radius: 2px; }
+.prog i { display: block; height: 100%; background: var(--person); border-radius: 2px; }
+.toast { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 60; background: var(--note); color: #fff; padding: 9px 14px; border-radius: var(--r1); font-size: 13px; max-width: min(560px, 92vw); white-space: pre-wrap; animation: fade 6s forwards; }
+@keyframes fade { 85% { opacity: 1; } to { opacity: 0; } }
 .hint { margin-top: auto; padding-top: 18px; font-size: 12px; color: var(--ink-3); }
 .hl { font-size: 12px; line-height: 1.35; }
 .src { font-size: 11.5px; color: var(--ink-3); word-break: break-all; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
@@ -125,7 +138,7 @@ a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: 
 
 .adv { position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--sheet); border-top: 1px solid var(--rule-2); font-size: 13px; color: var(--ink-2); }
 .adv.open { box-shadow: 0 -6px 20px rgba(21,24,29,.08); }
-.adv .ab { display: flex; align-items: center; gap: 14px; height: 46px; padding: 0 28px; cursor: pointer; white-space: nowrap; overflow: hidden; }
+.adv .ab { display: flex; flex-shrink: 0; align-items: center; gap: 14px; height: 46px; padding: 0 28px; cursor: pointer; white-space: nowrap; overflow: hidden; }
 .adv .ab .t { color: var(--ink); font-weight: 600; }
 .adv .ab .t::before { content: "▸ "; color: var(--ink-3); }
 .adv.open .ab .t::before { content: "▾ "; }
@@ -187,7 +200,7 @@ a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: 
   .adv { position: fixed; }
   .adv .ab { padding: 0 14px; }
   .adv.open { top: 0; display: flex; flex-direction: column; }
-  .adv.open .body { height: auto; flex: 1; }
+  .adv.open .body { height: auto; flex: 1; min-height: 0; }
   .trace, .compose { padding-left: 14px; padding-right: 14px; }
   .log.open { position: fixed; inset: 0; width: auto; z-index: 25; }
   .pv { inset: 0; border-radius: 0; }
@@ -236,6 +249,19 @@ function fileUrl(path, kind = 'files') {
 const ext = f => (f && f.includes('.') ? f.split('.').pop() : '').toUpperCase();
 
 let tree = [], cur = null, data = null, steps = [], stepsKey = '', traced = '', openItem = null, showClosed = false, pv = null;
+let seen = {}, prevSigs = {}, uploads = [];
+const sig = i => `${i.file}|${i.notes?.length ?? 0}|${i.headline ?? ''}`;
+
+function markSeen(items) {
+  for (const i of items) seen[i.id] = sig(i);
+  localStorage[`seen:${instPath()}`] = JSON.stringify(seen);
+}
+
+function toast(text) {
+  const el = Object.assign(document.createElement('div'), { className: 'toast', textContent: text });
+  document.body.append(el);
+  setTimeout(() => el.remove(), 6000);
+}
 const folds = new Map();
 const ui = { adv: false, log: false };
 
@@ -247,7 +273,7 @@ function who() {
 async function api(path, opts) {
   const r = await fetch(path, opts);
   const t = await r.text();
-  if (!r.ok) { alert(t); throw new Error(t); }
+  if (!r.ok) { toast(t); throw new Error(t); }
   try { return JSON.parse(t); } catch { return t; }
 }
 
@@ -289,8 +315,8 @@ function renderSide() {
       if (!on) continue;
       const closed = s.instances.filter(i => i.status !== 'open');
       for (const i of s.instances.filter(i => i.status === 'open' || showClosed || i.label === cur.label)) {
-        const st = i.running ? 'running' : i.questions ? `<span class="q">${i.questions} question${i.questions > 1 ? 's' : ''}</span>` : i.status;
-        h += `<a class="row inst ${cur.label === i.label ? 'on' : ''}" href="#/${enc(c.client)}/${enc(s.series)}/${enc(i.label)}"><span>${esc(i.label)}</span><span class="n">${st}</span></a>`;
+        const st = i.running ? '<span class="spin"></span> running' : i.queued ? '\u29D7 queued' : i.questions ? `<span class="q">${i.questions} question${i.questions > 1 ? 's' : ''}</span>` : i.status;
+        h += `<a class="row inst ${i.status} ${cur.label === i.label ? 'on' : ''}" href="#/${enc(c.client)}/${enc(s.series)}/${enc(i.label)}"><span>${esc(i.label)}</span><span class="n">${st}</span></a>`;
       }
       h += `<button class="quiet" data-act="new-instance">+ New instance</button>`;
       if (closed.length) h += `<button class="quiet" data-act="toggle-closed">${showClosed ? 'Hide' : 'Show'} closed (${closed.length})</button>`;
@@ -310,7 +336,7 @@ function renderBar() {
   h += `<div><div class="crumb">${esc(cur?.client ?? '')}${cur?.series ? ' · ' + esc(cur.series) : ''}</div><h1>${esc(cur?.label ?? 'No instance')}</h1></div>`;
   if (data) {
     const d = lastDone();
-    const state = data.workspace.status !== 'open' ? (data.workspace.status === 'closed' ? 'Closed' : 'Abandoned') : data.run ? `<span class="pulse"></span>Agent working · run ${data.run.n}` : d ? `Agent idle · last run ${hhmm(d.at)}` : 'Waiting for files';
+    const state = data.workspace.status !== 'open' ? `${data.workspace.status === 'closed' ? 'Closed' : 'Abandoned'} · read-only` : data.run ? `<span class="spin"></span>Agent working · run ${data.run.n}` : data.queued ? '\u29D7 Queued' : d ? `Agent idle · last run ${hhmm(d.at)}` : 'Waiting for files';
     h += `<div class="state">${state}</div>`;
     h += `<button class="btn top" data-act="process">Process</button><button class="btn top ${ui.log ? 'sel' : ''}" data-act="log">Ops log</button>`;
     const off = data.run ? 'disabled title="Available when the run ends"' : '';
@@ -338,13 +364,14 @@ function tile(item) {
   const notes = item.notes ?? [];
   const open = notes.filter(n => n.options && questionState(n) === null).length;
   const count = open ? `${open} question${open > 1 ? 's' : ''}` : notes.length ? `${notes.length} note${notes.length > 1 ? 's' : ''}` : '';
-  const corner = notes.length ? '<span class="corner"></span>' : '';
+  const corner = notes.length ? `<span class="corner ${open ? 'ask' : ''}"></span>` : '';
+  const mark = `${seen[item.id] !== sig(item) ? 'fresh' : ''} ${prevSigs[item.id] && prevSigs[item.id] !== sig(item) ? 'flash' : ''}`;
   if (!item.file) {
-    return `<div class="tile ghost" data-item="${esc(item.id)}">${corner}<div class="ext"><span>${esc(item.kind === 'input' ? 'INPUT' : 'OUTPUT')}</span><span class="nc">${count}</span></div><div class="fn">${esc(item.name)}</div><div class="meta">${item.kind === 'input' ? 'Missing' : 'Not built yet'}</div></div>`;
+    return `<div class="tile ghost ${mark}" data-item="${esc(item.id)}">${corner}<div class="ext"><span>${esc(item.kind === 'input' ? 'INPUT' : 'OUTPUT')}</span><span class="nc">${count}</span></div><div class="fn">${esc(item.name)}</div><div class="meta">${item.kind === 'input' ? 'Missing' : 'Not built yet'}</div></div>`;
   }
   const p = provenance(item.file);
   const v = data.log.filter(e => e.op === 'point' && e.item === item.id && e.file).length;
-  return `<div class="tile ${p.person ? 'person' : 'agent'} ${openItem === item.id ? 'on' : ''}" data-item="${esc(item.id)}">${corner}<div class="ext"><span>${esc(ext(item.file))}${v > 1 ? ' · v' + v : ''}</span><span class="nc">${count}</span></div><div class="fn">${esc(fname(item.file))}</div>${item.headline ? `<div class="hl">${esc(item.headline)}</div>` : ''}${item.source ? `<div class="src">${esc(item.source)}</div>` : ''}<div class="meta"><b>${esc(p.by)}</b> · ${hhmm(p.at)}</div></div>`;
+  return `<div class="tile ${p.person ? 'person' : 'agent'} ${openItem === item.id ? 'on' : ''} ${mark}" data-item="${esc(item.id)}">${corner}<div class="ext"><span>${esc(ext(item.file))}${v > 1 ? ' · v' + v : ''}</span><span class="nc">${count}</span></div><div class="fn">${esc(fname(item.file))}</div>${item.headline ? `<div class="hl">${esc(item.headline)}</div>` : ''}${item.source ? `<div class="src">${esc(item.source)}</div>` : ''}<div class="meta"><b>${esc(p.by)}</b> · ${hhmm(p.at)}</div></div>`;
 }
 
 function renderPanes() {
@@ -352,13 +379,15 @@ function renderPanes() {
     $('#panes').innerHTML = `<div class="empty">${cur?.series ? 'No instance yet. Use “+ New instance”.' : 'Pick a series.'}</div>`;
     return;
   }
-  const open = data.workspace.status === 'open';
+  const open = data.workspace.status === 'open', stored = localStorage[`seen:${instPath()}`];
+  seen = stored ? JSON.parse(stored) : {};
+  if (!stored) markSeen(data.workspace.items);
   let h = '';
   for (const [pane, kind, title] of [['in', 'input', 'Inputs'], ['out', 'output', 'Outputs']]) {
     const items = data.workspace.items.filter(i => i.kind === kind);
     const have = items.filter(i => i.file).length;
-    h += `<section class="pane" data-pane="${pane}"><div class="ph"><h2>${title}</h2><span class="c">${items.length ? `${have} of ${items.length}` : ''}</span>${open ? `<button class="btn" data-act="add" data-pane="${pane}">+ Add files</button>` : ''}</div>`;
-    h += `<div class="grid">${items.map(tile).join('')}</div>`;
+    h += `<section class="pane ${pane === 'out' && data.run ? 'busy' : ''}" data-pane="${pane}"><div class="ph"><h2>${title}</h2><span class="c">${items.length ? `${have} of ${items.length}` : ''}</span>${open ? `<button class="btn" data-act="add" data-pane="${pane}">+ Add files</button>` : ''}</div>`;
+    h += `<div class="grid">${items.map(tile).join('')}${uploads.filter(u => u.pane === pane).map(u => `<div class="tile ghost"><div class="ext"><span>UPLOADING</span></div><div class="fn">${esc(u.f.name)}</div><div class="prog"><i style="width:${u.pct}%"></i></div></div>`).join('')}</div>`;
     if (pane === 'in') {
       const shown = new Set(data.workspace.items.map(i => i.file)), also = new Map();
       for (const i of data.workspace.items) for (const n of i.notes ?? []) for (const f of n.files ?? []) if (!shown.has(f) && !also.has(f)) also.set(f, i);
@@ -368,6 +397,7 @@ function renderPanes() {
     h += '</section>';
   }
   $('#panes').innerHTML = h;
+  prevSigs = Object.fromEntries(data.workspace.items.map(i => [i.id, sig(i)]));
 }
 
 const logLine = e => `<div class="e"><span class="tm">${hhmm(e.at)}</span><div>${logText(e)}</div></div>`;
@@ -492,7 +522,8 @@ function renderCard() {
     if (n.options) {
       const picked = questionState(n);
       h += `<div class="choices">${n.options.map((o, k) => `<button class="choice ${k === (n.default ?? 0) ? 'def' : ''} ${picked === k ? 'picked' : ''}" data-act="answer" data-note="${esc(n.id)}" data-choice="${k}" ${picked !== null || !open ? 'disabled' : ''}>${esc(o)}</button>`).join('')}</div>`;
-      h += `<div class="by">${picked !== null ? 'Answered' : `If unanswered at close: ${esc(n.options[n.default ?? 0])}`}</div>`;
+      const got = picked !== null && (lastDone()?.seen ?? 0) >= data.log.findLast(e => e.op === 'answer' && e.note === n.id).seq;
+      h += `<div class="by">${picked !== null ? (got || !open ? 'Answered \u2713' : 'Answered \u00b7 <span class="spin"></span> the agent picks it up next') : `If unanswered at close: ${esc(n.options[n.default ?? 0])}`}</div>`;
     }
     h += '</div>';
   }
@@ -561,7 +592,7 @@ function renderPv() {
 }
 
 async function preview(path, item) {
-  pv = { title: fname(path), path, notes: item?.notes ?? [], sheet: 0, image: /\.(png|jpe?g|gif|webp)$/i.test(path) };
+  pv = { title: fname(path), path, notes: item?.notes ?? [], sheet: 0, image: /\.(png|jpe?g|gif|webp|svg)$/i.test(path) };
   if (/\.(xlsx|xlsm|xls|csv|eml)$/i.test(path)) Object.assign(pv, await api(fileUrl(path, 'preview')));
   renderPv();
 }
@@ -578,10 +609,21 @@ async function showProcess() {
 
 async function upload(files, pane, onto) {
   const by = who();
-  for (const f of files) {
-    await api(`${instPath()}/upload?by=${enc(by)}&pane=${pane}&name=${enc(f.name)}${onto ? '&onto=' + enc(onto) : ''}`, { method: 'POST', body: f });
-  }
+  uploads = files.map(f => ({ f, pane, pct: 0 }));
+  renderPanes();
+  try {
+    for (const u of [...uploads]) await new Promise((ok, fail) => {
+      const x = new XMLHttpRequest();
+      x.open('POST', `${instPath()}/upload?by=${enc(by)}&pane=${pane}&name=${enc(u.f.name)}${onto ? '&onto=' + enc(onto) : ''}`);
+      x.upload.onprogress = e => { u.pct = 100 * e.loaded / e.total; renderPanes(); };
+      x.onload = () => (x.status < 300 ? ok() : fail(new Error(x.responseText)));
+      x.onerror = () => fail(new Error(`${u.f.name} didn't upload`));
+      x.send(u.f);
+    }).then(() => { uploads = uploads.filter(x => x !== u); });
+  } catch (e) { toast(e.message); }
+  uploads = [];
   await refresh();
+  markSeen(data.workspace.items);
 }
 
 document.addEventListener('click', async ev => {
@@ -594,7 +636,12 @@ document.addEventListener('click', async ev => {
     return;
   }
   if (el.id === 'advbar') { ui.adv = !ui.adv; if (ui.adv) steps = await api(instPath() + '/steps'); return renderAdv(); }
-  if (el.classList.contains('tile')) { openItem = openItem === el.dataset.item ? null : el.dataset.item; renderPanes(); return renderCard(); }
+  if (el.classList.contains('tile')) {
+    openItem = openItem === el.dataset.item ? null : el.dataset.item;
+    markSeen(data.workspace.items.filter(i => i.id === openItem));
+    renderPanes();
+    return renderCard();
+  }
   const act = el.dataset.act;
   if (act === 'menu') $('#side').classList.toggle('open');
   if (act === 'log') { ui.log = !ui.log; renderLog(); renderBar(); }
@@ -690,7 +737,7 @@ for (const type of ['dragover', 'dragleave', 'drop']) {
   });
 }
 
-addEventListener('hashchange', () => { openItem = null; pv = null; folds.clear(); renderPv(); $('#side').classList.remove('open'); refresh(); });
+addEventListener('hashchange', () => { openItem = null; pv = null; folds.clear(); prevSigs = {}; renderPv(); $('#side').classList.remove('open'); refresh(); });
 addEventListener('resize', renderCard);
 refresh();
 setInterval(() => { if (!document.hidden) refresh(); }, 4000);
