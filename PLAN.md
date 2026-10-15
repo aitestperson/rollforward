@@ -21,7 +21,7 @@
 
 ## Screens
 
-- **Sidebar:** the series. Under the open series are its open instances in label order, then "+ New instance", "Show closed (18)" and "Series settings". A red dot marks agent output or an open question that this browser hasn't seen.
+- **Sidebar:** the series. Under the open series are its open instances in label order, then "+ New instance", "Show closed (18)" and "Series settings". A red dot on a series marks an open question; a black dot on an instance marks changes since this browser last opened it.
 - **Instance:** two panes, Inputs and Outputs. Each is a drop zone of file tiles, one per item.
   - A tile shows the item's current file, its version, and who made it, by colour: blue for a person and black for the agent. Hover shows who, when, and what it replaced. Earlier files are in the ops log.
   - Dashed tiles are items with no file yet: on the left, inputs that earlier instances had and this one lacks; on the right, outputs not built yet. The agent's note says why.
@@ -30,7 +30,7 @@
   - A corner marks a tile with agent notes: gray for a note, which is for information, and red for a question waiting for a person. Hover shows them, with where in the file they apply. A question shows its options as buttons, and says which applies if it's still unanswered at close; clicking one answers it.
   - Dropping onto a tile replaces that item's file; dropping onto the pane adds an item. The server places the file that way at once, even mid-run, and the agent then decides. For example, it can treat a pane drop as a replacement; it says so in a note.
   - There is no text box. People drop files, click answers and close the instance.
-- **State hints:** a spinner marks the running instance in the sidebar and the top bar, with a stripe along Outputs; ⧗ marks one waiting to run. A tile flashes when it changes and keeps a black dot until opened. An unanswered question's corner pulses, and an answer shows a spinner until the agent has read it. Uploads show progress, errors show as a toast, and abandoned instances are struck through.
+- **State hints:** a spinner marks the running instance in the sidebar and the top bar, with a stripe along Outputs; ⧗ marks one waiting to run. A tile flashes when it changes and keeps a black dot until opened. An unanswered question's corner pulses, and an answer shows a spinner until the agent has read it. Uploads show progress, a finished run and an error each show a toast, the tab title counts open questions, Esc closes the top layer, and abandoned instances are struck through.
 - **Ops log:** a side panel listing who did what, when: uploads, runs, every change the screen showed, answers, steers, the agent's replies and the close. Earlier files open from here.
 - **Preview** shows a spreadsheet with its noted cells marked. If the file replaced an earlier one, "Compare with previous" highlights the cells that changed, and a click shows the old value.
 - **Advanced:** a bar along the bottom that expands over the panes, like VS Code's terminal panel.
@@ -186,8 +186,10 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
      A driver imports the examples one at a time, then stages each forward week only when the agent may see it. To test the build, it compares the agent's outputs with the generator's, and prints checks (ids, headlines, sources, citations, `process.md` size); that is test tooling, not part of the system.
    - **Environment:**
      - Node 26, which runs TypeScript directly, and `npm install`;
-     - `uv venv .venv && uv pip install -r requirements.txt` (openpyxl, pandas, xlrd, extract-msg), with `.venv/bin` first on the agent's `PATH`;
+     - `uv venv .venv && uv pip install -r requirements.txt` (openpyxl, pandas, xlrd, extract-msg, defusedxml, requests, beautifulsoup4, lxml, matplotlib, pdfplumber, python-docx), with `.venv/bin` first on the agent's `PATH`;
      - LibreOffice, to recalculate scratch copies of formula workbooks.
+     - Each series has its own `.pylib` on the agent's `PYTHONPATH`: Python packages the agent installs there with `pip install --target` stay with the series, in the data volume, and survive a new image.
+     - The Docker image adds poppler, sqlite3, curl, git, jq, zip and CJK fonts. Its outbound network is open, and a run can reach every series; per-series capabilities (network, packages, sources, secrets) wait for the sandbox.
 2. **M2, the page (built):** [web/index.html](web/index.html), over the same server:
    - the panes, tiles, notes, ops log and Advanced, which reads the steps from the instance's Pi session file;
    - phone layout: the panes stack, and notes open as a bottom sheet;

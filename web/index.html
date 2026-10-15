@@ -39,6 +39,7 @@ a { color: inherit; }
 .pv.small { inset: 12vh auto auto 50%; transform: translateX(-50%); width: min(420px, 92vw); }
 .vl label { display: flex; align-items: center; gap: 8px; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--note); display: inline-block; margin-left: 6px; vertical-align: 1px; }
+.dot.k { background: var(--ink); }
 .legend { margin-top: auto; font-size: 12px; color: var(--ink-2); padding: 16px 8px 4px; display: grid; gap: 4px; }
 .legend i { font-style: normal; font-weight: 600; }
 .legend .p { color: var(--person); }
@@ -92,6 +93,7 @@ a { color: inherit; }
 @keyframes ask { 50% { opacity: .3; } }
 .prog { margin-top: auto; height: 3px; background: var(--rule); border-radius: 2px; }
 .prog i { display: block; height: 100%; background: var(--person); border-radius: 2px; }
+.toast.ok { background: var(--ink); }
 .toast { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 60; background: var(--note); color: #fff; padding: 9px 14px; border-radius: var(--r1); font-size: 13px; max-width: min(560px, 92vw); white-space: pre-wrap; animation: fade 6s forwards; }
 @keyframes fade { 85% { opacity: 1; } to { opacity: 0; } }
 .hint { margin-top: auto; padding-top: 18px; font-size: 12px; color: var(--ink-3); }
@@ -109,6 +111,7 @@ a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: 
 .tabs { display: flex; gap: 6px; padding: 8px 14px; flex-wrap: wrap; border-bottom: 1px solid var(--rule); }
 .tabs .btn { padding: 4px 9px; font-size: 12px; }
 .pvb { flex: 1; overflow: auto; }
+.pvb .say { padding: 14px 18px; white-space: pre-wrap; font-size: 13.5px; }
 .pvb pre { white-space: pre-wrap; word-break: break-word; font: 12.5px/1.5 var(--mono); padding: 14px 16px; margin: 0; }
 .pvb img { max-width: 100%; display: block; margin: 12px auto; }
 .sh { border-collapse: collapse; font: 12px/1.3 var(--mono); }
@@ -157,9 +160,9 @@ a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: 
 .trace .trig { font-size: 12.5px; color: var(--ink-2); margin: 2px 0 6px; }
 .trace .say { margin: 10px 0; color: var(--ink); white-space: pre-wrap; }
 .trace .say.reply { border-left: 3px solid var(--ink); padding-left: 12px; }
-.trace .say table { border-collapse: collapse; margin: 4px 0; white-space: normal; }
-.trace .say td { border: 1px solid var(--rule); padding: 3px 8px; font-size: 12.5px; }
-.trace .say tr:first-child td { font-weight: 600; background: var(--sheet); }
+.say table { border-collapse: collapse; margin: 4px 0; white-space: normal; }
+.say td { border: 1px solid var(--rule); padding: 3px 8px; font-size: 12.5px; }
+.say tr:first-child td { font-weight: 600; background: var(--sheet); }
 .trace details { font-size: 12.5px; color: var(--ink-2); margin: 4px 0; }
 .trace details details { margin-left: 14px; }
 .trace summary { cursor: pointer; list-style: none; }
@@ -255,7 +258,7 @@ function fileUrl(path, kind = 'files') {
 const ext = f => (f && f.includes('.') ? f.split('.').pop() : '').toUpperCase();
 
 let tree = [], cur = null, data = null, steps = [], stepsKey = '', traced = '', openItem = null, showClosed = false, pv = null;
-let seen = {}, prevSigs = {}, uploads = [];
+let seen = {}, prevSigs = {}, uploads = [], shown = '';
 const sig = i => `${i.file}|${i.notes?.length ?? 0}|${i.headline ?? ''}`;
 
 function markSeen(items) {
@@ -263,8 +266,8 @@ function markSeen(items) {
   localStorage[`seen:${instPath()}`] = JSON.stringify(seen);
 }
 
-function toast(text) {
-  const el = Object.assign(document.createElement('div'), { className: 'toast', textContent: text });
+function toast(text, kind = '') {
+  const el = Object.assign(document.createElement('div'), { className: `toast ${kind}`, textContent: text });
   document.body.append(el);
   setTimeout(() => el.remove(), 6000);
 }
@@ -295,12 +298,19 @@ async function refresh() {
     const c = tree[0], s = c?.series[0];
     if (s) cur = { client: c.client, series: s.series, label: (s.instances.find(i => i.status === 'open') ?? s.instances.at(-1))?.label };
   }
-  data = cur?.label ? await api(instPath()) : null;
+  const path = cur?.label ? instPath() : '', was = data && path === shown ? lastDone()?.seq ?? 0 : undefined;
+  data = path ? await api(path) : null;
+  shown = path;
+  const d = data && lastDone();
+  if (d && was !== undefined && d.seq > was) toast(`Run ${d.run} finished${d.summary ? ': ' + d.summary : ''}`, 'ok');
+  if (data) localStorage[`rev:${instPath()}`] = data.workspace.rev;
   if (ui.adv && data && (data.run || stepsKey !== `${instPath()}:${data.log.length}`)) [steps, stepsKey] = [await api(instPath() + '/steps'), `${instPath()}:${data.log.length}`];
   render();
 }
 
 function render() {
+  const qs = tree.flatMap(c => c.series.flatMap(s => s.instances)).reduce((t, i) => t + i.questions, 0);
+  document.title = `${qs ? `(${qs}) ` : ''}${cur?.label ? cur.label + ' \u00b7 ' : ''}rollforward`;
   renderSide();
   renderBar();
   renderPanes();
@@ -322,7 +332,9 @@ function renderSide() {
       const closed = s.instances.filter(i => i.status !== 'open');
       for (const i of s.instances.filter(i => i.status === 'open' || showClosed || i.label === cur.label)) {
         const st = i.running ? '<span class="spin"></span> running' : i.queued ? '\u29D7 queued' : i.questions ? `<span class="q">${i.questions} question${i.questions > 1 ? 's' : ''}</span>` : i.status;
-        h += `<a class="row inst ${i.status} ${cur.label === i.label ? 'on' : ''}" href="#/${enc(c.client)}/${enc(s.series)}/${enc(i.label)}"><span>${esc(i.label)}</span><span class="n">${st}</span></a>`;
+        const k = `rev:/api/${enc(c.client)}/${enc(s.series)}/${enc(i.label)}`;
+        localStorage[k] ??= i.rev;
+        h += `<a class="row inst ${i.status} ${cur.label === i.label ? 'on' : ''}" href="#/${enc(c.client)}/${enc(s.series)}/${enc(i.label)}"><span>${esc(i.label)}${i.rev > +localStorage[k] ? '<span class="dot k"></span>' : ''}</span><span class="n">${st}</span></a>`;
       }
       h += `<button class="quiet" data-act="new-instance">+ New instance</button>`;
       if (closed.length) h += `<button class="quiet" data-act="toggle-closed">${showClosed ? 'Hide' : 'Show'} closed (${closed.length})</button>`;
@@ -595,7 +607,7 @@ function renderPv() {
     const m = pv.email;
     h += `<div class="pvb"><pre>${esc(Object.entries(m.headers).map(([k, v]) => `${k}: ${v}`).join('\n') + (m.attachments.length ? `\nAttachments: ${m.attachments.join(', ')}` : '') + '\n\n' + m.text)}</pre></div>`;
   } else if (pv.image) h += `<div class="pvb"><img src="${fileUrl(pv.path)}" alt=""></div>`;
-  else if (pv.text !== undefined) h += `<div class="pvb"><pre>${esc(pv.text)}</pre></div>`;
+  else if (pv.text !== undefined) h += `<div class="pvb">${pv.md ? `<div class="say">${md(pv.text)}</div>` : `<pre>${esc(pv.text)}</pre>`}</div>`;
   else if (pv.settings) {
     const s = pv.settings;
     h += `<div class="pvb vl"><h3>Name</h3><input type="text" id="sname" value="${esc(s.name)}"><h3>Visibility</h3><div class="sub">Other series that can see this one</div>`
@@ -617,7 +629,7 @@ async function showProcess() {
   const from = data.log.find(e => e.op === 'create').from;
   for (const [label, path] of [[cur.label, 'working/process.md'], [from, `../${from}/working/process.md`]]) {
     const r = label && await fetch(fileUrl(path));
-    if (r?.ok) { pv = { title: `Process, as of ${label}`, path, text: await r.text() }; return renderPv(); }
+    if (r?.ok) { pv = { title: `Process, as of ${label}`, path, text: await r.text(), md: true }; return renderPv(); }
   }
   pv = { title: 'Process', text: 'No process.md yet.' };
   renderPv();
@@ -766,6 +778,10 @@ for (const type of ['dragover', 'dragleave', 'drop']) {
 
 addEventListener('hashchange', () => { openItem = null; pv = null; folds.clear(); prevSigs = {}; renderPv(); $('#side').classList.remove('open'); refresh(); });
 addEventListener('resize', renderCard);
+addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (pv) { pv = null; renderPv(); } else if (openItem) { openItem = null; renderCard(); renderPanes(); } else if (ui.adv) { ui.adv = false; renderAdv(); }
+});
 refresh();
 setInterval(() => { if (!document.hidden) refresh(); }, 4000);
 </script>

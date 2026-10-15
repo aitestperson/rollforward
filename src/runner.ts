@@ -16,7 +16,7 @@ export type Run = {
 export async function startRun(o: { seriesDir: string; instanceDir: string; env: Record<string, string>; message: string; onEvent: (e: JsonAgentSessionEvent) => void }): Promise<Run> {
   const client = new RpcClient({
     cliPath, cwd: o.seriesDir, provider, model,
-    env: { ...o.env, PATH: `${app}/bin:${app}/.venv/bin:${process.env.PATH}` },
+    env: { ...o.env, PATH: `${app}/bin:${app}/.venv/bin:${process.env.PATH}`, PYTHONPATH: join(o.seriesDir, '.pylib') },
     args: ['--no-extensions', '--no-skills', '--no-mcp', '--no-context-files', '--no-prompt-templates',
       '--tools', 'read,bash,edit,write', '--append-system-prompt', join(app, 'prompt.md'),
       '--thinking', process.env.RF_THINKING ?? 'high',

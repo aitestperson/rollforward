@@ -3,3 +3,9 @@ pandas
 xlrd
 extract-msg
 defusedxml
+requests
+beautifulsoup4
+lxml
+matplotlib
+pdfplumber
+python-docx

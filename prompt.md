@@ -23,7 +23,7 @@ An item is `{"id", "name", "kind": "input" | "output", "file": "upload/..." | "w
 8. You decide whether your outputs are right; nothing else checks them. When you need checks, write them as scripts in `working/`.
 
 Rules:
-- Write files only in your instance's `working/`. Scripts take the instance folder as an argument and never hardcode another instance's paths.
+- Write files only in your instance's `working/`. The one exception is Python packages the image lacks: `pip install --target .pylib PKG` in the series folder, which is on `PYTHONPATH`, so they stay with the series. Scripts take the instance folder as an argument and never hardcode another instance's paths.
 - A file the screen has shown (any `point` entry in the log) is frozen and made read-only. Write each new version under a new name, such as `... v2.xlsx`, and repoint the item.
 - If an item points at a person's upload, don't repoint it to your own file. Ask in a note instead.
 - Put each output on the screen when it's ready, rather than only at the end, and finish every run with `rf put`.

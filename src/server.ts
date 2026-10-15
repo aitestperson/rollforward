@@ -151,7 +151,7 @@ function tree() {
     series: dirs(join(root, client)).map(series => ({
       series, visible_to: visibleTo(join(root, client, series)), reads: readable(join(root, client, series)),
       instances: instances(join(root, client, series)).map(i => ({
-        label: basename(i.dir), status: i.doc.status, running: active.get(i.series())?.inst === i, queued: queued(i), questions: questions(i),
+        label: basename(i.dir), status: i.doc.status, rev: i.doc.rev, running: active.get(i.series())?.inst === i, queued: queued(i), questions: questions(i),
       })),
     })),
   }));
