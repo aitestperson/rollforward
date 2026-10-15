@@ -17,7 +17,7 @@ Recurring tasks, files in and files out. People drop this period's input files i
 
 ## Try it
 
-    cp .env.example .env          # set OPENROUTER_API_KEY
+    cp .env.example .env          # set OPENROUTER_API_KEY and RF_TOTP_SECRET (see Access)
     docker compose up --build     # then open http://127.0.0.1:8780
 
 The image comes with a demo series that is already populated: a weekly borrowing base for a made-up housewares company, nine weeks the agent has done.
@@ -27,7 +27,16 @@ The image comes with a demo series that is already populated: a weekly borrowing
 - **Things to open:** a tile, Preview, Process, the ops log and Advanced.
 - **Running the agent:** create an instance and drop files. A normal week costs about $0.20–0.60 with Claude Opus 5.5 through OpenRouter.
 
-**Security:** there is no sign-in, and the agent runs shell commands inside the container, which can read the API key and every series. Keep it on localhost or a private network such as Tailscale.
+## Access
+
+The site asks for a code from an authenticator app, then keeps the browser in for 7 days. Each wrong code doubles the wait before the next try, up to 5 minutes. Make a secret and scan it into the app:
+
+    python3 -c 'import base64, os; print(base64.b32encode(os.urandom(20)).decode())'    # RF_TOTP_SECRET
+    uvx --from qrcode qr "otpauth://totp/rollforward?secret=$RF_TOTP_SECRET&issuer=rollforward"
+
+To reach it from the internet, run `tailscale funnel --bg 8780`.
+
+**Security:** anyone with a code can steer the agent, which runs shell commands inside the container: it can read the API key and every series, and reach whatever the host can reach.
 
 ## Without Docker
 
@@ -47,6 +56,7 @@ The [justfile](justfile) has these and more as recipes; `just` lists them.
   - `RF_LIMIT_MIN` (120)
   - `RF_PI_ARGS` (a JSON array of extra Pi arguments)
   - `RF_HOST` (`127.0.0.1`)
+  - `RF_TOTP_SECRET` (required): the code's base32 secret
 
 To build the demo from scratch (about $4 of model use; the generator needs the internet for the ECB rates):
 

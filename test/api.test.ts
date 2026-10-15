@@ -1,6 +1,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { createHmac } from 'node:crypto';
 import { once } from 'node:events';
 import { cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -16,8 +17,17 @@ const tmp = mkdtempSync(join(tmpdir(), 'rf-')), root = join(tmp, 'data');
 let proc: ChildProcess, base: string;
 
 const at = (...parts: string[]) => `/api/larkfield/${parts.map(encodeURIComponent).join('/')}`;
-const json = async (path: string) => (await fetch(base + path)).json();
-const call = (method: string, path: string, body?: BodyInit) => fetch(base + path, { method, body });
+const headers = { cookie: '' };
+const json = async (path: string) => (await fetch(base + path, { headers })).json();
+const call = (method: string, path: string, body?: BodyInit) => fetch(base + path, { method, body, headers });
+const login = (code: string) => fetch(base + '/login', { method: 'POST', body: new URLSearchParams({ code }), redirect: 'manual' });
+const now = () => Math.floor(Date.now() / 30_000);
+const code = (step: number) => {
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(step));
+  const h = createHmac('sha1', '12345678901234567890').update(counter).digest();
+  return String((h.readUInt32BE(h[19] & 15) & 0x7fffffff) % 1_000_000).padStart(6, '0');
+};
 const seriesList = async () => (await json('/api')).find((c: { client: string }) => c.client === 'larkfield').series;
 const shown = async (name: string) => (await seriesList()).find((s: { series: string }) => s.series === name);
 
@@ -26,6 +36,7 @@ before(async () => {
   const env: NodeJS.ProcessEnv = { ...process.env, HOME: join(tmp, 'home') };
   mkdirSync(env.HOME);
   delete env.OPENROUTER_API_KEY;
+  env.RF_TOTP_SECRET = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ'; // base32 of the RFC 6238 test key
   const probe = createServer();
   await new Promise(ok => probe.listen(0, '127.0.0.1', ok));
   const port = (probe.address() as { port: number }).port;
@@ -36,6 +47,7 @@ before(async () => {
     proc.stdout!.on('data', d => String(d).includes('rollforward on') && ok(null));
     proc.on('exit', code => fail(new Error(`server exited with ${code}`)));
   });
+  headers.cookie = (await login(code(now()))).headers.get('set-cookie')!.split(';')[0];
 });
 
 after(async () => {
@@ -155,17 +167,28 @@ test('series settings write series.json; a rename moves the folder and rewrites 
 test('files: uploads download as attachments; paths outside upload/ and working/ are refused', async () => {
   const file = (rel: string) => `/files/larkfield/${encodeURIComponent(series)}/2026-08-30/${encodeURIComponent(rel)}`;
   const name = 'Larkfield AR aging 083026.xlsx';
-  const r = await fetch(base + file(`upload/${name}`));
+  const r = await fetch(base + file(`upload/${name}`), { headers });
   assert.equal(r.status, 200);
   assert.match(r.headers.get('content-disposition')!, /^attachment/);
   assert.ok((Buffer.from(await r.arrayBuffer())).equals(readFileSync(join(root, 'larkfield', series, '2026-08-30', 'upload', name))));
   for (const rel of ['upload/../../workspace.json', 'workspace.json', 'log.jsonl'])
-    assert.equal((await fetch(base + file(rel))).status, 400, rel);
+    assert.equal((await fetch(base + file(rel), { headers })).status, 400, rel);
   symlinkSync('/proc/self/environ', join(root, 'larkfield', series, '2026-08-30', 'working', 'env.txt'));
-  assert.equal((await fetch(base + file('working/env.txt'))).status, 400, 'a link out of the instance is refused');
+  assert.equal((await fetch(base + file('working/env.txt'), { headers })).status, 400, 'a link out of the instance is refused');
 });
 
 test('a cross-site POST is refused, so another web page cannot steer the agent', async () => {
-  const r = await fetch(base + at(series, '2026-09-06', 'steer'), { method: 'POST', body: '{"text":"x"}', headers: { 'sec-fetch-site': 'cross-site' } });
+  const r = await fetch(base + at(series, '2026-09-06', 'steer'), { method: 'POST', body: '{"text":"x"}', headers: { ...headers, 'sec-fetch-site': 'cross-site' } });
   assert.equal(r.status, 403);
+});
+
+test('the site asks for a code from an authenticator app; each wrong code doubles the wait before the next try', async () => {
+  assert.equal(code(1), '287082', 'the RFC 6238 vector for T=59, so the server agrees with the RFC');
+  assert.equal((await fetch(base + '/api')).status, 401);
+  assert.match(await (await fetch(base + '/')).text(), /authenticator app/);
+  assert.equal(await (await fetch(base + '/agent/workspace')).text(), 'no run for this token', 'the agent API takes its run token instead');
+  assert.equal((await login('wrong')).status, 401);
+  assert.equal((await login(code(now()))).status, 429, 'a right code waits out the delay too');
+  await new Promise(r => setTimeout(r, 2000));
+  assert.equal((await login(code(now()))).status, 303);
 });
