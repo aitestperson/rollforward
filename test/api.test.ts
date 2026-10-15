@@ -61,6 +61,13 @@ test('a new instance starts from the last closed one; a new series can be made',
   assert.ok(workspace.items.every((i: { file: unknown }) => i.file === null));
   assert.equal(log[0].op, 'create');
   assert.equal(log[0].from, '2026-08-30');
+  assert.equal(log[0].fetch, true, '08-30 fetched inputs, so the new instance starts a run at once');
+  let done;
+  for (let i = 0; !done && i < 240; i++) {
+    await new Promise(r => setTimeout(r, 250));
+    done = (await json(at(series, '2026-09-13'))).log.find((e: { op: string }) => e.op === 'done');
+  }
+  assert.ok(done, 'the fetch run ended');
 
   assert.equal((await call('POST', at(monthly))).status, 200);
   assert.ok(await shown(monthly));

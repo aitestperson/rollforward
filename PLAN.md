@@ -128,7 +128,7 @@ The schemas are loose, and unknown fields are ignored, so the agent and the UI c
 
 - **One session per instance.** The server runs Pi in the series folder with the instructions in [prompt.md](prompt.md). Each run is one prompt into the instance's session, so within an instance the agent remembers its earlier runs. A new instance starts a new session, so whatever the next instance needs must be in the files.
 - **Messages:** every prompt and steer reads `Instance <label> (folder <label>/), run <n>. New log entries:`, followed by the log lines, as JSON, that the agent hasn't been sent. The agent's own lines are left out.
-- **What starts a run:** an upload, an answer or a Steer from a person. Runs start 1.5 s after the last of a burst of uploads, so a multi-file drop starts one run.
+- **What starts a run:** an upload, an answer or a Steer from a person, or a new instance whose parent had inputs the agent made (files in `working/`), so the fetched inputs arrive at once; its `create` entry carries `fetch`. Runs start 1.5 s after the last of a burst of uploads, so a multi-file drop starts one run.
   - **During a run,** the same events reach the agent as a steer. Pi delivers it after the current turn's tool calls, and with steering mode `all`, everything queued by then arrives together.
   - **Events for another instance of the series** wait for the current run to end.
 - **The cursor:** the runner records the highest log seq the agent has actually received, which it knows when Pi starts the user message that carried it. When a run settles and people's events lie above the cursor, another run starts at once. They can get there through a steer sent as the run ended, or one cleared by Interrupt. After an Interrupt, the next run waits for the next event.

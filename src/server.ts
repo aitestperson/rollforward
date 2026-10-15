@@ -25,7 +25,7 @@ function seenBefore(inst: Instance): number {
 }
 
 function pending(inst: Instance, seen: number): Entry[] {
-  return inst.log.filter(e => e.seq > seen && isPerson(e) && ['upload', 'answer', 'steer'].includes(e.op));
+  return inst.log.filter(e => e.seq > seen && isPerson(e) && (['upload', 'answer', 'steer'].includes(e.op) || (e.op === 'create' && e.fetch)));
 }
 
 function message(inst: Instance, n: number, entries: Entry[]): string {
@@ -237,7 +237,11 @@ async function people(req: IncomingMessage, res: ServerResponse, url: URL) {
     }
     return send(res, 200, instances(seriesDir).map(i => ({ label: basename(i.dir), status: i.doc.status, running: active.get(seriesDir)?.inst === i })));
   }
-  if (!action && req.method === 'POST') return send(res, 200, createInstance(seriesDir, label, by).doc);
+  if (!action && req.method === 'POST') {
+    const created = createInstance(seriesDir, label, by);
+    kick(created);
+    return send(res, 200, created.doc);
+  }
   const dir = join(seriesDir, label);
   if (!existsSync(join(dir, 'workspace.json'))) throw new HttpError(404, `no instance ${label}`);
   const inst = instance(dir);

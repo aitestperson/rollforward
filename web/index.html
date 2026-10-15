@@ -414,7 +414,7 @@ function logText(e) {
   const item = id => esc(data.workspace.items.find(i => i.id === id)?.name ?? id);
   const f = e.file ? `<div class="f">${esc(e.file)}</div>` : '';
   return {
-    create: () => `${w} opened the instance${e.from ? `<div class="d">Items carried over from ${esc(e.from)}.</div>` : ''}`,
+    create: () => `${w} opened the instance${e.from ? `<div class="d">Items carried over from ${esc(e.from)}.${e.fetch ? ' The agent starts fetching its inputs.' : ''}</div>` : ''}`,
     upload: () => `${w} uploaded ${e.pane === 'out' ? 'an output' : 'an input'}${e.onto ? ' onto ' + item(e.onto) : ''}${f}`,
     point: () => `${w} ${e.file ? 'showed' : 'cleared'} ${item(e.item)}${e.was ? `<div class="d">Replacing ${esc(fname(e.was))}</div>` : ''}${f}`,
     item: () => `${w} set up ${esc(e.name)}${e.headline ? `<div class="d">${esc(e.headline)}</div>` : ''}${e.source ? `<div class="d">Source: ${esc(e.source)}</div>` : ''}`,

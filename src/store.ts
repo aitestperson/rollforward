@@ -51,7 +51,8 @@ export function createInstance(seriesDir: string, label: string, by: string): In
   const inst = instance(dir);
   inst.doc.items = (from?.doc.items ?? []).map(({ id, name, kind }) => ({ id, name, kind, file: null, notes: [] }));
   inst.save();
-  inst.append(by, 'create', { from: from ? basename(from.dir) : null });
+  const fetch = from?.doc.items.some(i => i.kind === 'input' && i.file?.startsWith('working/'));
+  inst.append(by, 'create', { from: from ? basename(from.dir) : null, ...(fetch && { fetch }) });
   return inst;
 }
 
