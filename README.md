@@ -27,7 +27,7 @@ The image comes with a demo series that is already populated: a weekly borrowing
 - **Things to open:** a tile, Preview, Process, the ops log and Advanced.
 - **Running the agent:** create an instance and drop files. A normal week costs about $0.20–0.60 with Claude Opus 5.5 through OpenRouter.
 
-**Security:** there is no sign-in, and the agent runs shell commands inside the container. Keep it on localhost or a private network such as Tailscale.
+**Security:** there is no sign-in, and the agent runs shell commands inside the container, which can read the API key and every series. Keep it on localhost or a private network such as Tailscale.
 
 ## Without Docker
 

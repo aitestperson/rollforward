@@ -2,7 +2,7 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -161,4 +161,11 @@ test('files: uploads download as attachments; paths outside upload/ and working/
   assert.ok((Buffer.from(await r.arrayBuffer())).equals(readFileSync(join(root, 'larkfield', series, '2026-08-30', 'upload', name))));
   for (const rel of ['upload/../../workspace.json', 'workspace.json', 'log.jsonl'])
     assert.equal((await fetch(base + file(rel))).status, 400, rel);
+  symlinkSync('/proc/self/environ', join(root, 'larkfield', series, '2026-08-30', 'working', 'env.txt'));
+  assert.equal((await fetch(base + file('working/env.txt'))).status, 400, 'a link out of the instance is refused');
+});
+
+test('a cross-site POST is refused, so another web page cannot steer the agent', async () => {
+  const r = await fetch(base + at(series, '2026-09-06', 'steer'), { method: 'POST', body: '{"text":"x"}', headers: { 'sec-fetch-site': 'cross-site' } });
+  assert.equal(r.status, 403);
 });

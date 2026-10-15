@@ -1,9 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { createReadStream, existsSync, globSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, globSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { basename, dirname, join, normalize, resolve } from 'node:path';
+import { basename, dirname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInstance, duplicateInstance, forget, renameInstance, HttpError, instance, instances, isPerson, safeName, type Entry, type Instance } from './store.ts';
 import { startRun, type Run } from './runner.ts';
@@ -57,7 +57,7 @@ function flush(a: Active) {
   const text = message(a.inst, a.n, entries);
   a.sent = entries.at(-1)!.seq;
   a.texts.set(text, a.sent);
-  a.run!.steer(text);
+  a.run!.steer(text).catch(err => finish(a, true, String(err)));
 }
 
 async function start(inst: Instance) {
@@ -187,8 +187,9 @@ async function file(res: ServerResponse, url: URL, preview: boolean) {
   const [client, series, label, ...rest] = url.pathname.split('/').slice(2).map(decodeURIComponent);
   const rel = rest.join('/');
   if (normalize(rel) !== rel || !/^(upload|working)\//.test(rel) || rel.split('/').includes('..')) throw new HttpError(400, 'bad path');
-  const path = join(root, safeName(client), safeName(series), safeName(label), rel);
+  const dir = join(root, safeName(client), safeName(series), safeName(label)), path = join(dir, rel);
   if (!existsSync(path)) throw new HttpError(404, 'no such file');
+  if (!realpathSync(path).startsWith(realpathSync(dir) + sep)) throw new HttpError(400, 'links must stay inside the instance');
   if (preview) {
     const { stdout } = await exec(join(app, '.venv', 'bin', 'python'), [join(app, 'src', 'preview.py'), path], { timeout: 30_000, maxBuffer: 64e6 });
     res.writeHead(200, { 'content-type': 'application/json' });
@@ -291,6 +292,8 @@ async function people(req: IncomingMessage, res: ServerResponse, url: URL) {
 createServer(async (req, res) => {
   const url = new URL(req.url!, 'http://x');
   try {
+    const site = req.headers['sec-fetch-site'];
+    if (req.method !== 'GET' && site && site !== 'same-origin') throw new HttpError(403, 'cross-site request refused');
     if (url.pathname === '/') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       res.end(readFileSync(page));

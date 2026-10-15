@@ -194,7 +194,8 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
    - the panes, tiles, notes, ops log and Advanced, which reads the steps from the instance's Pi session file;
    - phone layout: the panes stack, and notes open as a bottom sheet;
    - it polls every 4 seconds rather than streaming events;
-   - uploads, answers, Steer, Interrupt and Close as POSTs; file downloads;
+   - uploads, answers, Steer, Interrupt and Close as POSTs, refused when the browser marks them cross-site, so another web page can't steer an agent;
+   - file downloads: attachments with a sandboxing CSP (images inline), and only files whose real path stays inside the instance, so an agent's link can't expose the server's files;
    - the name, asked once and kept in the browser.
 
    The demo can run behind `tailscale serve`, to try it from a phone.
