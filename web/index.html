@@ -133,13 +133,28 @@ a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: 
 .adv .ab .r { margin-left: auto; color: var(--ink-3); font-size: 12px; }
 .adv .body { display: none; height: min(476px, 60dvh); border-top: 1px solid var(--rule); grid-template-rows: 1fr auto; background: var(--paper); }
 .adv.open .body { display: grid; }
-.trace { overflow: auto; padding: 14px 28px; }
-.trace .rn { color: var(--ink-3); font-size: 12px; margin: 16px 0 6px; white-space: pre-wrap; max-height: 7.5em; overflow: hidden; }
-.trace .say { margin: 10px 0 6px; color: var(--ink); white-space: pre-wrap; }
-.trace .tl { font: 12px/1.6 var(--mono); color: var(--ink-2); white-space: pre-wrap; word-break: break-word; }
-.trace .tl b { color: var(--ink); font-weight: 500; }
-.trace .tl .o { color: var(--ink-3); display: block; max-height: 3.2em; overflow: hidden; padding-left: 16px; }
-.trace .tl .o.err { color: var(--note); }
+.trace { overflow: auto; padding: 4px 28px 14px; }
+.trace .rh { font-size: 12px; font-weight: 600; color: var(--ink-3); margin: 14px 0 6px; padding-top: 12px; border-top: 1px solid var(--rule); }
+.trace .rh:first-child { border-top: 0; }
+.trace .trig { font-size: 12.5px; color: var(--ink-2); margin: 2px 0 6px; }
+.trace .say { margin: 10px 0; color: var(--ink); white-space: pre-wrap; }
+.trace .say table { border-collapse: collapse; margin: 4px 0; white-space: normal; }
+.trace .say td { border: 1px solid var(--rule); padding: 3px 8px; font-size: 12.5px; }
+.trace .say tr:first-child td { font-weight: 600; background: var(--sheet); }
+.trace details { font-size: 12.5px; color: var(--ink-2); margin: 4px 0; }
+.trace details details { margin-left: 14px; }
+.trace summary { cursor: pointer; list-style: none; }
+.trace summary::-webkit-details-marker { display: none; }
+.trace summary::before { content: '▸'; display: inline-block; width: 14px; color: var(--ink-3); vertical-align: top; }
+.trace details[open] > summary::before { content: '▾'; }
+.trace summary b { color: var(--ink); font-weight: 500; }
+.trace .cmd { display: inline-block; max-width: calc(100% - 20px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
+.trace code, .trace .res { font: 12px var(--mono); }
+.trace .res { color: var(--ink-3); padding-left: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trace pre { margin: 4px 0 8px 14px; padding: 8px 10px; background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r1); white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; font: 11.5px/1.5 var(--mono); }
+.trace .bad { color: var(--note); }
+.spin { display: inline-block; width: 8px; height: 8px; border: 2px solid var(--rule-2); border-top-color: var(--ink); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .compose { border-top: 1px solid var(--rule); background: var(--sheet); padding: 10px 28px 14px; display: flex; gap: 8px; }
 .compose input { flex: 1; min-width: 0; background: var(--sheet); border: 1px solid var(--rule-2); border-radius: var(--r1); padding: 8px 10px; font: inherit; }
 
@@ -149,10 +164,10 @@ a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: 
 .log .lh b { font-size: 15px; font-weight: 600; }
 .e { display: grid; grid-template-columns: 46px 1fr; gap: 6px; padding: 10px 20px; border-bottom: 1px solid var(--rule); font-size: 13px; }
 .e .tm { color: var(--ink-3); font-size: 12px; padding-top: 1px; }
-.e .w { font-weight: 600; }
-.e .w.p { color: var(--person); }
-.e .d { color: var(--ink-2); font-size: 12.5px; margin-top: 2px; white-space: pre-wrap; word-break: break-word; }
-.e .f { font: 11.5px var(--mono); color: var(--ink-3); margin-top: 3px; word-break: break-all; }
+:is(.e, .trig) .w { font-weight: 600; }
+:is(.e, .trig) .w.p { color: var(--person); }
+:is(.e, .trig) .d { color: var(--ink-2); font-size: 12.5px; margin-top: 2px; white-space: pre-wrap; word-break: break-word; }
+:is(.e, .trig) .f { font: 11.5px var(--mono); color: var(--ink-3); margin-top: 3px; word-break: break-all; }
 
 @media (max-width: 800px) {
   .app { display: block; }
@@ -220,7 +235,8 @@ function fileUrl(path, kind = 'files') {
 }
 const ext = f => (f && f.includes('.') ? f.split('.').pop() : '').toUpperCase();
 
-let tree = [], cur = null, data = null, steps = [], openItem = null, showClosed = false, pv = null;
+let tree = [], cur = null, data = null, steps = [], stepsKey = '', traced = '', openItem = null, showClosed = false, pv = null;
+const folds = new Map();
 const ui = { adv: false, log: false };
 
 function who() {
@@ -248,7 +264,7 @@ async function refresh() {
     if (s) cur = { client: c.client, series: s.series, label: (s.instances.find(i => i.status === 'open') ?? s.instances.at(-1))?.label };
   }
   data = cur?.label ? await api(instPath()) : null;
-  if (ui.adv && data) steps = await api(instPath() + '/steps');
+  if (ui.adv && data && (data.run || stepsKey !== `${instPath()}:${data.log.length}`)) [steps, stepsKey] = [await api(instPath() + '/steps'), `${instPath()}:${data.log.length}`];
   render();
 }
 
@@ -354,12 +370,14 @@ function renderPanes() {
   $('#panes').innerHTML = h;
 }
 
-function logLine(e) {
+const logLine = e => `<div class="e"><span class="tm">${hhmm(e.at)}</span><div>${logText(e)}</div></div>`;
+
+function logText(e) {
   const person = e.by !== 'server' && e.by !== 'agent';
   const w = `<span class="w ${person ? 'p' : ''}">${esc(person ? e.by : e.by === 'agent' ? 'Agent' : 'Server')}</span>`;
   const item = id => esc(data.workspace.items.find(i => i.id === id)?.name ?? id);
   const f = e.file ? `<div class="f">${esc(e.file)}</div>` : '';
-  const text = {
+  return {
     create: () => `${w} opened the instance${e.from ? `<div class="d">Items carried over from ${esc(e.from)}.</div>` : ''}`,
     upload: () => `${w} uploaded ${e.pane === 'out' ? 'an output' : 'an input'}${e.onto ? ' onto ' + item(e.onto) : ''}${f}`,
     point: () => `${w} ${e.file ? 'showed' : 'cleared'} ${item(e.item)}${e.was ? `<div class="d">Replacing ${esc(fname(e.was))}</div>` : ''}${f}`,
@@ -376,7 +394,6 @@ function logLine(e) {
     abandon: () => `${w} abandoned the instance`,
     duplicate: () => `${w} made this instance as a copy of ${esc(e.from)}`,
   }[e.op]?.() ?? `${w} ${esc(e.op)}`;
-  return `<div class="e"><span class="tm">${hhmm(e.at)}</span><div>${text}</div></div>`;
 }
 
 function renderLog() {
@@ -394,12 +411,69 @@ function renderAdv() {
   const s = (data.run ? `Run ${data.run.n} running` : d ? `Run ${d.run} finished ${hhmm(d.at)}${d.summary ? ' · ' + d.summary : ''}` : 'No runs yet') + (cost ? ` · ${usd(cost)} so far` : '');
   $('#advbar').innerHTML = `<span class="t">Advanced</span><span class="s">${esc(s)}</span><span class="r">${ui.adv ? 'Hide steps' : 'Show steps'}</span>`;
   if (!ui.adv) return;
-  const trace = $('#trace');
+  const trace = $('#trace'), html = traceHtml();
+  if (html === traced) return;
   const atEnd = trace.scrollTop + trace.clientHeight >= trace.scrollHeight - 30;
-  trace.innerHTML = steps.map(s => s.kind === 'user' ? `<div class="rn">${hhmm(s.at)} · ${esc(s.text)}</div>`
-    : s.kind === 'say' ? `<div class="say">${esc(s.text)}</div>`
-    : `<div class="tl"><b>${esc(s.kind)}</b> ${esc(s.text.length > 300 ? s.text.slice(0, 300) + '…' : s.text)}${s.result ? `<span class="o ${s.error ? 'err' : ''}">→ ${esc(s.result)}</span>` : ''}</div>`).join('') || '<div class="rn">No steps yet.</div>';
+  trace.innerHTML = traced = html;
   if (atEnd) trace.scrollTop = trace.scrollHeight;
+}
+
+const VERB = { read: 'Read', bash: 'Ran', edit: 'Edited', write: 'Wrote' };
+const NOUN = { read: 'file', bash: 'command', edit: 'file', write: 'file' };
+const firstLine = t => t.trim().split('\n')[0];
+const inline = s => s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
+
+function md(text) {
+  let h = '', rows = [];
+  const table = () => { if (rows.length) h += `<table>${rows.map(r => `<tr>${r.map(c => `<td>${inline(c)}</td>`).join('')}</tr>`).join('')}</table>`; rows = []; };
+  for (const l of esc(text).split('\n')) {
+    if (l.trim().startsWith('|')) { if (!/^[\s|:-]+$/.test(l)) rows.push(l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim())); continue; }
+    table();
+    h += inline(l.replace(/^(\s*)[-*] /, '$1\u2022 ').replace(/^#+ (.*)/, '<b>$1</b>')) + '\n';
+  }
+  table();
+  return h.trimEnd();
+}
+const fold = (key, dflt, head, body) => `<details data-key="${key}" ${folds.get(key) ?? dflt ? 'open' : ''}><summary>${head}</summary>${body}</details>`;
+
+function stepHtml(s, i) {
+  const res = s.result === undefined ? (data.run ? '<span class="spin"></span>' : 'no result')
+    : s.error ? `<span class="bad">${esc(firstLine(s.result) || 'failed')}</span>`
+    : s.kind === 'read' ? `${s.lines} lines`
+    : firstLine(s.result) ? esc(firstLine(s.result)) + (s.lines > 1 ? ` +${s.lines - 1} lines` : '') : 'no output';
+  const target = s.kind === 'bash' ? s.text : s.text.split(`/${cur.series}/`).pop();
+  return fold(`s${i}`, false, `<span class="cmd"><b>${VERB[s.kind] ?? esc(s.kind)}</b> <code>${esc(firstLine(target))}</code></span><div class="res">⎿ ${res}</div>`,
+    `<pre>${esc(s.text)}</pre>${s.result ? `<pre class="${s.error ? 'bad' : ''}">${esc(s.result)}</pre>` : ''}`);
+}
+
+function groupHtml(g, live) {
+  if (g.length === 1) return stepHtml(...g[0]);
+  const counts = Object.entries(Object.groupBy(g, ([s]) => s.kind)).map(([k, xs]) => `${(VERB[k] ?? k).toLowerCase()} ${xs.length} ${NOUN[k] ?? 'call'}${xs.length > 1 ? 's' : ''}`).join(', ');
+  const bad = g.filter(([s]) => s.error).length;
+  const head = counts[0].toUpperCase() + counts.slice(1) + (bad ? ` · <span class="bad">${bad} failed</span>` : '') + (live ? ' <span class="spin"></span>' : '');
+  return fold(`g${g[0][1]}`, live, head, g.map(x => stepHtml(...x)).join(''));
+}
+
+function traceHtml() {
+  let h = '', g = [], run = 0;
+  const flush = live => { if (g.length) h += groupHtml(g, live); g = []; };
+  steps.forEach((s, i) => {
+    if (s.kind !== 'user' && s.kind !== 'say') return void g.push([s, i]);
+    flush(false);
+    if (s.kind === 'say') return void (h += `<div class="say">${md(s.text)}</div>`);
+    const n = Number(s.text.match(/run (\d+)\./)[1]);
+    if (n !== run) {
+      const d = data.log.find(e => e.op === 'done' && e.run === n);
+      h += `<div class="rh">Run ${n} · ${hhmm(s.at)}${d ? ` · ${took(d)} · ${usd(d.cost)}` : data.run?.n === n ? ' · running' : ''}</div>`;
+      run = n;
+    }
+    for (const l of s.text.split('New log entries:\n')[1].split('\n')) {
+      const e = JSON.parse(l);
+      if (e.by !== 'server') h += `<div class="trig">${logText(e)}</div>`;
+    }
+  });
+  flush(!!data.run);
+  return h || '<div class="rh">No steps yet.</div>';
 }
 
 function renderCard() {
@@ -512,6 +586,8 @@ async function upload(files, pane, onto) {
 
 document.addEventListener('click', async ev => {
   if (!ev.target.closest('#side, [data-act=menu]') || ev.target.closest('#side a')) $('#side').classList.remove('open');
+  const sum = ev.target.closest('#trace summary');
+  if (sum) return void folds.set(sum.parentElement.dataset.key, !sum.parentElement.open);
   const el = ev.target.closest('[data-act], .tile, #advbar');
   if (!el) {
     if (!ev.target.closest('#card, #pv')) { openItem = null; renderCard(); renderPanes(); }
@@ -614,7 +690,7 @@ for (const type of ['dragover', 'dragleave', 'drop']) {
   });
 }
 
-addEventListener('hashchange', () => { openItem = null; pv = null; renderPv(); $('#side').classList.remove('open'); refresh(); });
+addEventListener('hashchange', () => { openItem = null; pv = null; folds.clear(); renderPv(); $('#side').classList.remove('open'); refresh(); });
 addEventListener('resize', renderCard);
 refresh();
 setInterval(() => { if (!document.hidden) refresh(); }, 4000);

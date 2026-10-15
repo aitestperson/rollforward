@@ -100,6 +100,7 @@ export class Instance {
     const target = onto ? this.doc.items.find(i => i.id === onto) : null;
     if (onto && !target) throw new HttpError(400, `no item ${onto}`);
     const clean = safeName(name), ext = extname(clean), stem = clean.slice(0, clean.length - ext.length);
+    mkdirSync(join(this.dir, 'upload'), { recursive: true });
     let file = `upload/${clean}`;
     for (let n = 2; existsSync(join(this.dir, file)); n++) file = `upload/${stem}_${n}${ext}`;
     const path = join(this.dir, file);

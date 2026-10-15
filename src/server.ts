@@ -105,6 +105,7 @@ function finish(a: Active, aborted: boolean, error?: string) {
   active.delete(series);
   a.run?.stop();
   a.inst.append('server', 'done', { run: a.n, aborted, seen: a.seen, cost: +a.cost.toFixed(4), summary: a.inst.doc.summary ?? null, ...(error && { error }) });
+  if (!a.run) return; // it never started, as with a missing API key: wait for the next person action rather than retry at once
   if (!a.interrupted && pending(a.inst, a.seen).length) return void start(a.inst);
   const next = instances(series).find(i => i.doc.status === 'open' && pending(i, seenBefore(i)).length);
   if (next) start(next);
@@ -152,7 +153,8 @@ function tree() {
 
 function steps(inst: Instance) {
   const dir = join(inst.dir, 'session');
-  const out: { kind: string; text: string; at?: string; result?: string; error?: boolean }[] = [];
+  type Step = { kind: string; text: string; at?: string; result?: string; lines?: number; error?: boolean };
+  const out: Step[] = [], calls = new Map<string, Step>();
   for (const f of existsSync(dir) ? readdirSync(dir).filter(f => f.endsWith('.jsonl')).sort() : []) {
     for (const line of readFileSync(join(dir, f), 'utf8').split('\n').filter(Boolean)) {
       const e = JSON.parse(line);
@@ -161,11 +163,14 @@ function steps(inst: Instance) {
       if (m.role === 'user') out.push({ kind: 'user', at: e.timestamp, text: typeof m.content === 'string' ? m.content : m.content.map((b: { text?: string }) => b.text ?? '').join('') });
       if (m.role === 'assistant') for (const b of m.content) {
         if (b.type === 'text' && b.text.trim()) out.push({ kind: 'say', at: e.timestamp, text: b.text });
-        if (b.type === 'toolCall') out.push({ kind: b.name, at: e.timestamp, text: b.arguments.command ?? b.arguments.path ?? JSON.stringify(b.arguments) });
+        if (b.type === 'toolCall') {
+          out.push({ kind: b.name, at: e.timestamp, text: b.arguments.command ?? b.arguments.path ?? JSON.stringify(b.arguments) });
+          calls.set(b.id, out.at(-1)!);
+        }
       }
-      if (m.role === 'toolResult' && out.length) {
-        out.at(-1)!.result = m.content.map((b: { text?: string }) => b.text ?? '').join('').slice(0, 400);
-        out.at(-1)!.error = m.isError;
+      if (m.role === 'toolResult') {
+        const text = m.content.map((b: { text?: string }) => b.text ?? '').join('');
+        Object.assign(calls.get(m.toolCallId)!, { result: text.slice(0, 4000), lines: text.trimEnd().split('\n').length, error: m.isError });
       }
     }
   }
