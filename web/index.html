@@ -16,6 +16,7 @@
   --sans: "IBM Plex Sans", "Noto Sans", sans-serif; --mono: "IBM Plex Mono", "DejaVu Sans Mono", monospace;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; font: 14px/1.45 var(--sans); color: var(--ink); background: var(--paper); font-variant-numeric: tabular-nums; }
 button { font: inherit; cursor: pointer; }
 a { color: inherit; }
@@ -47,7 +48,7 @@ a { color: inherit; }
 .legend .dash { display: inline-block; width: 16px; height: 10px; border: 1px dashed var(--ink-3); border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
 
 .main { display: flex; flex-direction: column; min-width: 0; height: 100dvh; position: relative; }
-.bar { display: flex; align-items: center; gap: 12px; padding: 14px 28px; border-bottom: 1px solid var(--rule); background: var(--sheet); }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 28px; border-bottom: 1px solid var(--rule); background: var(--sheet); }
 .menu { display: none; border: 1px solid var(--rule-2); background: var(--sheet); border-radius: var(--r1); padding: 6px 10px; }
 .crumb { font-size: 13px; color: var(--ink-3); }
 .bar h1 { margin: 2px 0 0; font-size: 20px; font-weight: 600; letter-spacing: -.01em; }
@@ -62,7 +63,7 @@ a { color: inherit; }
 .btn.sel { background: var(--paper); box-shadow: inset 0 1px 2px rgba(0,0,0,.08); }
 
 .panes { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; overflow: auto; padding-bottom: 46px; }
-.pane { padding: 22px 28px 20px; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+.pane { padding: 22px 28px 20px; display: flex; flex-direction: column; position: relative; overflow: clip; }
 .pane.busy::before { content: ''; position: absolute; top: 0; left: -30%; width: 30%; height: 2px; background: var(--ink); animation: stripe 1.4s ease-in-out infinite; }
 @keyframes stripe { to { left: 100%; } }
 .pane.drag::after { content: '+ Add'; position: absolute; top: 20px; right: 28px; font-weight: 600; color: var(--person); }
@@ -93,8 +94,9 @@ a { color: inherit; }
 @keyframes ask { 50% { opacity: .3; } }
 .prog { margin-top: auto; height: 3px; background: var(--rule); border-radius: 2px; }
 .prog i { display: block; height: 100%; background: var(--person); border-radius: 2px; }
+#toasts { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 60; display: grid; gap: 6px; justify-items: center; }
+.toast { background: var(--note); color: #fff; padding: 9px 14px; border-radius: var(--r1); font-size: 13px; max-width: min(560px, 92vw); white-space: pre-wrap; animation: fade 6s forwards; }
 .toast.ok { background: var(--ink); }
-.toast { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 60; background: var(--note); color: #fff; padding: 9px 14px; border-radius: var(--r1); font-size: 13px; max-width: min(560px, 92vw); white-space: pre-wrap; animation: fade 6s forwards; }
 @keyframes fade { 85% { opacity: 1; } to { opacity: 0; } }
 .hint { margin-top: auto; padding-top: 18px; font-size: 12px; color: var(--ink-3); }
 .hl { font-size: 12px; line-height: 1.35; }
@@ -105,7 +107,6 @@ a { color: inherit; }
 a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: pointer; }
 .cites { margin-top: 6px; font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 10px; }
 .pv { position: fixed; inset: 4vh 4vw; z-index: 40; background: var(--sheet); border: 1px solid var(--rule-2); border-radius: var(--r2); box-shadow: 0 6px 24px rgba(21,24,29,.18); display: flex; flex-direction: column; }
-.pv[hidden] { display: none; }
 .pvh { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
 .pvh b { font-size: 13px; word-break: break-all; margin-right: auto; }
 .tabs { display: flex; gap: 6px; padding: 8px 14px; flex-wrap: wrap; border-bottom: 1px solid var(--rule); }
@@ -117,6 +118,7 @@ a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: 
 .sh { border-collapse: collapse; font: 12px/1.3 var(--mono); }
 .sh th, .sh td { border: 1px solid var(--rule); padding: 3px 6px; white-space: nowrap; }
 .sh th { position: sticky; top: 0; background: var(--paper); color: var(--ink-3); font-weight: 500; z-index: 1; }
+.sh th:first-child { left: 0; z-index: 2; }
 .sh td.rn { position: sticky; left: 0; background: var(--paper); color: var(--ink-3); text-align: right; }
 .sh td.num { text-align: right; }
 .sh td.fx { color: var(--ink-3); font-style: italic; }
@@ -129,7 +131,6 @@ a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: 
 .empty { color: var(--ink-3); font-size: 13px; padding: 40px 28px; }
 
 .card { position: fixed; z-index: 20; width: 396px; max-height: 80dvh; overflow: auto; background: var(--sheet); border: 1px solid var(--rule-2); border-radius: var(--r2); box-shadow: 0 3px 10px rgba(21,24,29,.10); padding: 14px 16px 12px; }
-.card[hidden] { display: none; }
 .card .cf { font-weight: 600; font-size: 13px; word-break: break-word; }
 .card .cp { font-size: 12px; color: var(--ink-3); margin: 2px 0 10px; }
 .card .cp b { font-weight: 500; color: var(--ink); }
@@ -177,7 +178,6 @@ a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: 
 .trace .bad { color: var(--note); }
 .spin { display: inline-block; width: 8px; height: 8px; border: 2px solid var(--rule-2); border-top-color: var(--ink); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.compose[hidden] { display: none; }
 .compose { border-top: 1px solid var(--rule); background: var(--sheet); padding: 10px 28px 14px; display: flex; gap: 8px; }
 .compose input { flex: 1; min-width: 0; background: var(--sheet); border: 1px solid var(--rule-2); border-radius: var(--r1); padding: 8px 10px; font: inherit; }
 
@@ -197,7 +197,7 @@ a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: 
   .side { position: fixed; inset: 0 auto 0 0; width: 280px; z-index: 30; display: none; box-shadow: 0 0 40px rgba(0,0,0,.2); }
   .side.open { display: flex; }
   .menu { display: inline-block; }
-  .bar { padding: 10px 14px; flex-wrap: wrap; }
+  .bar { padding: 10px 14px; }
   .bar h1 { font-size: 17px; }
   .state { margin-left: 0; order: 5; width: 100%; }
   .bar .btn.top { padding: 6px 9px; font-size: 12px; }
@@ -241,6 +241,7 @@ a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: 
 <div class="card" id="card" hidden></div>
 <div class="pv" id="pv" hidden></div>
 <input type="file" id="picker" multiple hidden>
+<div id="toasts"></div>
 <script>
 const $ = s => document.querySelector(s);
 const enc = encodeURIComponent;
@@ -258,8 +259,8 @@ function fileUrl(path, kind = 'files') {
 }
 const ext = f => (f && f.includes('.') ? f.split('.').pop() : '').toUpperCase();
 
-let tree = [], cur = null, data = null, steps = [], stepsKey = '', traced = '', openItem = null, showClosed = false, pv = null;
-let seen = {}, prevSigs = {}, uploads = [], shown = '';
+let tree = [], cur = null, data = null, steps = [], stepsKey = '', openItem = null, showClosed = false, pv = null;
+let seen = {}, prevSigs = {}, uploads = [], shown = '', refreshes = 0;
 const sig = i => `${i.file}|${i.notes?.length ?? 0}|${i.headline ?? ''}`;
 
 function markSeen(items) {
@@ -269,11 +270,17 @@ function markSeen(items) {
 
 function toast(text, kind = '') {
   const el = Object.assign(document.createElement('div'), { className: `toast ${kind}`, textContent: text });
-  document.body.append(el);
+  $('#toasts').append(el);
   setTimeout(() => el.remove(), 6000);
 }
 const folds = new Map();
 const ui = { adv: false, log: false };
+const drawn = new WeakMap();
+
+function put(el, html) {
+  if (drawn.get(el) !== html) el.innerHTML = html;
+  drawn.set(el, html);
+}
 
 function who() {
   if (!localStorage.rfName) localStorage.rfName = (prompt('Your name, for the log:') || '').trim() || 'someone';
@@ -292,20 +299,21 @@ const instPath = () => `${seriesPath(cur)}/${enc(cur.label)}`;
 const go = (client, series, label) => { location.hash = '#/' + [client, series, label].filter(Boolean).map(enc).join('/'); };
 
 async function refresh() {
-  tree = await api('/api');
+  const n = ++refreshes, t = await api('/api');
   const [client, series, label] = location.hash.slice(2).split('/').filter(Boolean).map(decodeURIComponent);
-  cur = client ? { client, series, label } : null;
-  if (!cur) {
-    const c = tree[0], s = c?.series[0];
-    if (s) cur = { client: c.client, series: s.series, label: (s.instances.find(i => i.status === 'open') ?? s.instances.at(-1))?.label };
-  }
-  const path = cur?.label ? instPath() : '', was = data && path === shown ? lastDone()?.seq ?? 0 : undefined;
-  data = path ? await api(path) : null;
-  shown = path;
-  const d = data && lastDone();
-  if (d && was !== undefined && d.seq > was) toast(`Run ${d.run} finished${d.summary ? ': ' + d.summary : ''}`, 'ok');
-  if (data) localStorage[`rev:${instPath()}`] = data.workspace.rev;
-  if (ui.adv && data && (data.run || stepsKey !== `${instPath()}:${data.log.length}`)) [steps, stepsKey] = [await api(instPath() + '/steps'), `${instPath()}:${data.log.length}`];
+  const c = client ? t.find(c => c.client === client) : t[0];
+  const s = series ? c?.series.find(s => s.series === series) : c?.series[0];
+  const i = label ? s?.instances.find(i => i.label === label) : s?.instances.find(i => i.status === 'open') ?? s?.instances.at(-1);
+  const next = c && { client: c.client, series: s?.series, label: s && (label ?? i?.label) };
+  const path = i ? `${seriesPath(next)}/${enc(i.label)}` : '', d = path ? await api(path) : null;
+  const key = `${path}:${d?.log.length}`, st = ui.adv && d && (d.run || key !== stepsKey) ? await api(path + '/steps') : null;
+  if (n !== refreshes) return;
+  const was = data && path === shown ? lastDone()?.seq ?? 0 : undefined;
+  [tree, cur, data, shown] = [t, next, d, path];
+  if (st) [steps, stepsKey] = [st, key];
+  const done = data && lastDone();
+  if (done && was !== undefined && done.seq > was) toast(`Run ${done.run} finished${done.summary ? ': ' + done.summary : ''}`, 'ok');
+  if (data) localStorage[`rev:${path}`] = data.workspace.rev;
   render();
 }
 
@@ -345,7 +353,7 @@ function renderSide() {
   }
   if (!tree.length) h += '<div class="empty">No clients yet. Make a folder under the data root.</div>';
   h += `<div class="legend"><div><i class="p">Blue</i> uploaded by a person</div><div><i>Black</i> made by the agent</div><div><span class="tri"></span>a note, for information</div><div><span class="tri q"></span>a question for you</div><div><span class="dash"></span>expected, not there yet</div></div>`;
-  $('#side').innerHTML = h;
+  put($('#side'), h);
 }
 
 function lastDone() { return data.log.findLast(e => e.op === 'done'); }
@@ -362,7 +370,7 @@ function renderBar() {
     if (data.workspace.status === 'open') h += `<button class="btn danger top" data-act="abandon" ${off}>Abandon</button><button class="btn commit top" data-act="close" ${off}>Close instance</button>`;
     else h += `<button class="btn top" data-act="duplicate">Duplicate</button>`;
   }
-  $('#bar').innerHTML = h;
+  put($('#bar'), h);
 }
 
 function questionState(note) {
@@ -394,10 +402,7 @@ function tile(item) {
 }
 
 function renderPanes() {
-  if (!data) {
-    $('#panes').innerHTML = `<div class="empty">${cur?.series ? 'No instance yet. Use “+ New instance”.' : 'Pick a series.'}</div>`;
-    return;
-  }
+  if (!data) return put($('#panes'), `<div class="empty">${cur?.label ? `No instance ${esc(cur.label)}.` : cur?.series ? 'No instance yet. Use “+ New instance”.' : 'Pick a series.'}</div>`);
   const open = data.workspace.status === 'open', stored = localStorage[`seen:${instPath()}`];
   seen = stored ? JSON.parse(stored) : {};
   if (!stored) markSeen(data.workspace.items);
@@ -406,7 +411,7 @@ function renderPanes() {
     const items = data.workspace.items.filter(i => i.kind === kind);
     const have = items.filter(i => i.file).length;
     h += `<section class="pane ${pane === 'out' && data.run ? 'busy' : ''}" data-pane="${pane}"><div class="ph"><h2>${title}</h2><span class="c">${items.length ? `${have} of ${items.length}` : ''}</span>${open ? `<button class="btn" data-act="add" data-pane="${pane}">+ Add files</button>` : ''}</div>`;
-    h += `<div class="grid">${items.map(tile).join('')}${uploads.filter(u => u.pane === pane).map(u => `<div class="tile ghost"><div class="ext"><span>UPLOADING</span></div><div class="fn">${esc(u.f.name)}</div><div class="prog"><i style="width:${u.pct}%"></i></div></div>`).join('')}</div>`;
+    h += `<div class="grid">${items.map(tile).join('')}${uploads.filter(u => u.pane === pane && u.path === instPath()).map(u => `<div class="tile ghost"><div class="ext"><span>UPLOADING</span></div><div class="fn">${esc(u.f.name)}</div><div class="prog"><i style="width:${u.pct}%"></i></div></div>`).join('')}</div>`;
     if (pane === 'in') {
       const shown = new Set(data.workspace.items.map(i => i.file)), also = new Map();
       for (const i of data.workspace.items) for (const n of i.notes ?? []) for (const f of n.files ?? []) if (!shown.has(f) && !also.has(f)) also.set(f, i);
@@ -415,7 +420,7 @@ function renderPanes() {
     if (open) h += `<div class="hint">${pane === 'in' ? 'Drop files to add them. Drop onto a file to replace it.' : 'Drop a revised output onto its file.'}</div>`;
     h += '</section>';
   }
-  $('#panes').innerHTML = h;
+  put($('#panes'), h);
   prevSigs = Object.fromEntries(data.workspace.items.map(i => [i.id, sig(i)]));
 }
 
@@ -425,7 +430,7 @@ function logText(e) {
   const person = e.by !== 'server' && e.by !== 'agent';
   const w = `<span class="w ${person ? 'p' : ''}">${esc(person ? e.by : e.by === 'agent' ? 'Agent' : 'Server')}</span>`;
   const item = id => esc(data.workspace.items.find(i => i.id === id)?.name ?? id);
-  const f = e.file ? `<div class="f">${esc(e.file)}</div>` : '';
+  const f = e.file ? `<div class="f"><a data-act="preview" data-file="${esc(e.file)}">${esc(e.file)}</a></div>` : '';
   return {
     create: () => `${w} opened the instance${e.from ? `<div class="d">Items carried over from ${esc(e.from)}.${e.fetch ? ' The agent starts fetching its inputs.' : ''}</div>` : ''}`,
     upload: () => `${w} uploaded ${e.pane === 'out' ? 'an output' : 'an input'}${e.onto ? ' onto ' + item(e.onto) : ''}${f}`,
@@ -450,7 +455,7 @@ function logText(e) {
 function renderLog() {
   $('#log').className = 'log' + (ui.log && data ? ' open' : '');
   if (!ui.log || !data) return;
-  $('#log').innerHTML = `<div class="lh"><b>Ops log</b><button class="btn" data-act="log">Close</button></div>` + [...data.log].reverse().map(logLine).join('');
+  put($('#log'), `<div class="lh"><b>Ops log</b><button class="btn" data-act="log">Close</button></div>` + [...data.log].reverse().map(logLine).join(''));
 }
 
 function renderAdv() {
@@ -463,10 +468,8 @@ function renderAdv() {
   const s = (data.run ? `Run ${data.run.n} running` : d ? `Run ${d.run} finished ${hhmm(d.at)}${d.summary ? ' · ' + d.summary : ''}` : 'No runs yet') + (cost ? ` · ${usd(cost)} so far` : '');
   $('#advbar').innerHTML = `<span class="t">Advanced</span><span class="s">${esc(s)}</span><span class="r">${ui.adv ? 'Hide steps' : 'Show steps'}</span>`;
   if (!ui.adv) return;
-  const trace = $('#trace'), html = traceHtml();
-  if (html === traced) return;
-  const atEnd = trace.scrollTop + trace.clientHeight >= trace.scrollHeight - 30;
-  trace.innerHTML = traced = html;
+  const trace = $('#trace'), atEnd = trace.scrollTop + trace.clientHeight >= trace.scrollHeight - 30;
+  put(trace, traceHtml());
   if (atEnd) trace.scrollTop = trace.scrollHeight;
 }
 
@@ -556,9 +559,13 @@ function renderCard() {
   if (item.file) h += `<button class="btn" data-act="preview" data-file="${esc(item.file)}" data-item="${esc(item.id)}">Preview</button><a class="btn" href="${fileUrl(item.file)}">Download</a>`;
   if (open) h += `<button class="btn" data-act="replace" data-item="${esc(item.id)}" data-pane="${item.kind === 'input' ? 'in' : 'out'}">${item.file ? 'Replace…' : 'Upload…'}</button>`;
   h += `<button class="btn" data-act="uncard" style="margin-left:auto">Close</button></div>`;
-  card.innerHTML = h;
+  put(card, h);
   card.hidden = false;
-  const t = document.querySelector(`.tile[data-item="${CSS.escape(item.id)}"]`);
+  placeCard();
+}
+
+function placeCard() {
+  const card = $('#card'), t = !card.hidden && document.querySelector(`.tile[data-item="${CSS.escape(openItem)}"]`);
   if (!t || innerWidth <= 800) return;
   const r = t.getBoundingClientRect(), w = card.offsetWidth, ch = card.offsetHeight;
   const right = r.right + 10 + w < innerWidth;
@@ -617,14 +624,15 @@ function renderPv() {
       + (s.reads.length ? `<div class="sub">This series can see ${esc(s.reads.join(', '))}.</div>` : '')
       + '<div><button class="btn primary" data-act="savesettings">Save</button></div></div>';
   }
+  else if (pv.loading) h += `<div class="pvb"><div class="empty">Loading…</div></div>`;
   else h += `<div class="pvb"><div class="empty">No preview for this kind of file. Download it instead.</div></div>`;
   $('#pv').innerHTML = h + '<div class="pvn" id="pvn"></div>';
 }
 
 async function preview(path, item) {
-  pv = { title: fname(path), path, notes: item?.notes ?? [], sheet: 0, image: /\.(png|jpe?g|gif|webp|svg)$/i.test(path), was: item && data.log.findLast(e => e.op === 'point' && e.item === item.id && e.file === path)?.was };
-  if (/\.(xlsx|xlsm|xls|csv|eml)$/i.test(path)) Object.assign(pv, await api(fileUrl(path, 'preview')));
+  const p = pv = { title: fname(path), path, notes: item?.notes ?? [], sheet: 0, image: /\.(png|jpe?g|gif|webp|svg)$/i.test(path), was: item && data.log.findLast(e => e.op === 'point' && e.item === item.id && e.file === path)?.was, loading: /\.(xlsx|xlsm|xls|csv|eml)$/i.test(path) };
   renderPv();
+  if (p.loading) await api(fileUrl(path, 'preview')).then(r => Object.assign(p, r)).finally(() => { p.loading = false; if (pv === p) renderPv(); });
 }
 
 async function showProcess() {
@@ -638,13 +646,13 @@ async function showProcess() {
 }
 
 async function upload(files, pane, onto) {
-  const by = who();
-  uploads = files.map(f => ({ f, pane, pct: 0 }));
+  const by = who(), path = instPath(), mine = files.map(f => ({ f, pane, path, pct: 0 }));
+  uploads.push(...mine);
   renderPanes();
-  for (const u of [...uploads]) {
+  for (const u of mine) {
     await new Promise((ok, fail) => {
       const x = new XMLHttpRequest();
-      x.open('POST', `${instPath()}/upload?by=${enc(by)}&pane=${pane}&name=${enc(u.f.name)}${onto ? '&onto=' + enc(onto) : ''}`);
+      x.open('POST', `${path}/upload?by=${enc(by)}&pane=${pane}&name=${enc(u.f.name)}${onto ? '&onto=' + enc(onto) : ''}`);
       x.upload.onprogress = e => { u.pct = 100 * e.loaded / e.total; renderPanes(); };
       x.onload = () => (x.status < 300 ? ok() : fail(new Error(x.responseText)));
       x.onerror = () => fail(new Error(`${u.f.name} didn't upload`));
@@ -701,9 +709,10 @@ document.addEventListener('click', async ev => {
     go(cur.client, cur.series, label);
   }
   if (act === 'compare') {
-    pv.old ??= (await api(fileUrl(pv.was, 'preview'))).sheets;
-    pv.cmp = !pv.cmp;
-    renderPv();
+    const p = pv;
+    p.old ??= (await api(fileUrl(p.was, 'preview'))).sheets;
+    p.cmp = !p.cmp;
+    if (pv === p) renderPv();
   }
   if (act === 'duplicate') {
     const label = (prompt('Label for the copy:', `${cur.label} copy`) || '').trim();
@@ -757,8 +766,8 @@ $('#compose').addEventListener('submit', async e => {
   e.preventDefault();
   const text = $('#steer').value.trim();
   if (!text) return;
-  await api(`${instPath()}/steer?by=${enc(who())}`, { method: 'POST', body: JSON.stringify({ text }) });
   $('#steer').value = '';
+  await api(`${instPath()}/steer?by=${enc(who())}`, { method: 'POST', body: JSON.stringify({ text }) }).catch(() => { $('#steer').value = text; });
   await refresh();
 });
 $('#interrupt').addEventListener('click', async () => {
@@ -770,16 +779,19 @@ $('#interrupt').addEventListener('click', async () => {
 for (const type of ['dragover', 'dragleave', 'drop']) {
   $('#panes').addEventListener(type, e => {
     const pane = e.target.closest('.pane'), t = e.target.closest('.tile');
-    if (!pane || data?.workspace.status !== 'open') return;
+    if (!pane || data?.workspace.status !== 'open' || !e.dataTransfer.types.includes('Files')) return;
     e.preventDefault();
     document.querySelectorAll('.drag').forEach(x => x.classList.remove('drag'));
     if (type === 'dragover') (t ?? pane).classList.add('drag');
     if (type === 'drop') upload([...e.dataTransfer.files], pane.dataset.pane, t?.dataset.item);
   });
 }
+addEventListener('dragover', e => { if (!e.defaultPrevented) { e.preventDefault(); e.dataTransfer.dropEffect = 'none'; } });
+addEventListener('drop', e => e.preventDefault());
+$('#panes').addEventListener('scroll', placeCard);
 
 addEventListener('hashchange', () => { openItem = null; pv = null; folds.clear(); prevSigs = {}; renderPv(); $('#side').classList.remove('open'); refresh(); });
-addEventListener('resize', renderCard);
+addEventListener('resize', placeCard);
 addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   if (pv) { pv = null; renderPv(); } else if (openItem) { openItem = null; renderCard(); renderPanes(); } else if (ui.adv) { ui.adv = false; renderAdv(); }
