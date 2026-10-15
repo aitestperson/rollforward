@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { basename, dirname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createInstance, HttpError, instance, instances, isPerson, safeName, type Entry, type Instance } from './store.ts';
+import { createInstance, duplicateInstance, forget, HttpError, instance, instances, isPerson, safeName, type Entry, type Instance } from './store.ts';
 import { startRun, type Run } from './runner.ts';
 
 const root = resolve(process.argv[2]);
@@ -48,7 +48,7 @@ function kick(inst: Instance) {
   const a = active.get(inst.series());
   if (a) return a.inst === inst && a.run && flush(a);
   clearTimeout(debounce.get(inst.dir));
-  debounce.set(inst.dir, setTimeout(() => start(inst), 1500));
+  debounce.set(inst.dir, setTimeout(() => { debounce.delete(inst.dir); start(inst); }, 1500));
 }
 
 function flush(a: Active) {
@@ -201,11 +201,26 @@ async function people(req: IncomingMessage, res: ServerResponse, url: URL) {
       return send(res, 200, 'ok');
     }
     if (req.method === 'PUT') {
-      const names = JSON.parse((await body(req)).toString()).visible_to;
-      if (!Array.isArray(names) || !names.every(n => typeof n === 'string')) throw new HttpError(400, 'visible_to must be a list of series names');
-      const p = join(seriesDir, 'series.json');
-      writeFileSync(p + '.tmp', JSON.stringify({ visible_to: names }, null, 1), { mode: 0o444 });
-      renameSync(p + '.tmp', p);
+      const { name, visible_to } = JSON.parse((await body(req)).toString());
+      if (!Array.isArray(visible_to) || !visible_to.every(n => typeof n === 'string')) throw new HttpError(400, 'visible_to must be a list of series names');
+      const to = safeName(name), clientDir = join(root, client), updates = new Map([[seriesDir, visible_to]]);
+      if (to !== series) {
+        if (existsSync(join(clientDir, to))) throw new HttpError(409, `${to} exists`);
+        if (active.has(seriesDir) || instances(seriesDir).some(i => debounce.has(i.dir))) throw new HttpError(409, 'wait for the run to end');
+        for (const s of dirs(clientDir)) {
+          const v = visibleTo(join(clientDir, s));
+          if (v.includes(series)) updates.set(join(clientDir, s), v.map(n => (n === series ? to : n)));
+        }
+      }
+      for (const [dir, names] of updates) {
+        const p = join(dir, 'series.json');
+        writeFileSync(p + '.tmp', JSON.stringify({ visible_to: names }, null, 1), { mode: 0o444 });
+        renameSync(p + '.tmp', p);
+      }
+      if (to !== series) {
+        renameSync(seriesDir, join(clientDir, to));
+        forget(seriesDir);
+      }
       return send(res, 200, 'ok');
     }
     return send(res, 200, instances(seriesDir).map(i => ({ label: basename(i.dir), status: i.doc.status, running: active.get(seriesDir)?.inst === i })));
@@ -219,6 +234,10 @@ async function people(req: IncomingMessage, res: ServerResponse, url: URL) {
   if (!action) return send(res, 200, { workspace: inst.doc, log: inst.log, run: mine ? { n: mine.n } : null });
   if (action === 'steps') return send(res, 200, steps(inst));
   if (req.method !== 'POST') throw new HttpError(405, 'POST only');
+  if (action === 'duplicate') {
+    if (inst.doc.status === 'open') throw new HttpError(409, 'only a closed or abandoned instance can be duplicated');
+    return send(res, 200, duplicateInstance(inst, url.searchParams.get('as') ?? '', by).doc);
+  }
   if (inst.doc.status !== 'open') throw new HttpError(409, `instance is ${inst.doc.status}`);
   if (action === 'upload') {
     const pane = url.searchParams.get('pane') === 'out' ? 'out' : 'in';

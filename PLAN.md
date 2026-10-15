@@ -21,7 +21,7 @@
 
 ## Screens
 
-- **Sidebar:** the series. Under the open series are its open instances in label order, then "+ New instance" and "Show closed (18)". A red dot marks agent output or an open question that this browser hasn't seen.
+- **Sidebar:** the series. Under the open series are its open instances in label order, then "+ New instance", "Show closed (18)" and "Series settings". A red dot marks agent output or an open question that this browser hasn't seen.
 - **Instance:** two panes, Inputs and Outputs. Each is a drop zone of file tiles, one per item.
   - A tile shows the item's current file, its version, and who made it, by colour: blue for a person and black for the agent. Hover shows who, when, and what it replaced. Earlier files are in the ops log.
   - Dashed tiles are items with no file yet: on the left, inputs that earlier instances had and this one lacks; on the right, outputs not built yet. The agent's note says why.
@@ -38,6 +38,8 @@
 - **New instance:** give it a label. It starts with the items of the most recently closed instance as dashed tiles.
 - **Close instance:** freezes the instance as an example. Unanswered questions take their defaults, and the dialog lists which. It is disabled while a run is going.
 - **Abandon:** the other way an instance ends. It stays as it is, but it isn't an example, never becomes a new instance's starting point, and applies no defaults. It is also disabled while a run is going. Closed and abandoned instances both show under "Show closed".
+- **Duplicate:** a closed or abandoned instance can be copied, under a new label, into an open instance. The copy has its files, screen and log, but not its agent session, and its log records the copy as `duplicate`.
+- **Series settings:** the series' name, and its visibility: the other series that can see it. Renaming moves the series folder, and waits until no run is going.
 - **Names:** until M3 adds sign-in, the page asks for a name once and keeps it in the browser.
 
 ## Storage
@@ -45,7 +47,7 @@
 Clients are folders on the host's disk. There is no database.
 
     <client>/
-      <series>/               e.g. "Weekly borrowing base"; series folders are never moved
+      <series>/               e.g. "Weekly borrowing base"; moved only by a rename in Series settings
         series.json           {"visible_to": [series names, or "*"]}, set by people through the server, read-only
         <label>/              an instance: a folder holding workspace.json, made by New instance
           upload/             people's files, as uploaded, read-only
@@ -106,7 +108,7 @@ The schemas are loose, and unknown fields are ignored, so the agent and the UI c
       ]
     }
 
-**`log.jsonl`** has one line per event. `seq` orders the lines, and `by` is a person's name, "server" or "agent". The ops are `create`, `upload`, `point`, `item`, `note`, `unnote`, `remove`, `run`, `done`, `answer`, `steer`, `interrupt`, `close` and `abandon`. `done` carries the run's model cost in USD. Here `point` means an item now shows a file:
+**`log.jsonl`** has one line per event. `seq` orders the lines, and `by` is a person's name, "server" or "agent". The ops are `create`, `upload`, `point`, `item`, `note`, `unnote`, `remove`, `run`, `done`, `answer`, `steer`, `interrupt`, `close`, `abandon` and `duplicate`. `done` carries the run's model cost in USD. Here `point` means an item now shows a file:
 
     {"seq": 40, "at": "2026-08-24T15:02:00Z", "by": "alex", "op": "upload", "file": "upload/Larkfield AR aging 082426_2.xlsx", "pane": "in", "onto": null, "sha256": "9f2c…"}
     {"seq": 41, "at": "2026-08-24T15:02:00Z", "by": "server", "op": "point", "item": "u40", "file": "upload/Larkfield AR aging 082426_2.xlsx"}
@@ -244,6 +246,7 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
 19. **Sources** (15 Oct): the agent may read the sources people point it to, and never writes to them.
 20. **Two end states** (15 Oct): Close or Abandon.
 21. **Series visibility** (15 Oct): one way, granted by the publishing series, read-only for the reader; one workspace for now. People's roles per series (owner, member, visitor) come later.
+22. **Duplicate and series settings** (15 Oct): a closed or abandoned instance can be duplicated into an open one. Each series has settings, for now its name and its visibility to other series.
 
 ## Proposed by the agent (open to change)
 

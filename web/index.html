@@ -31,11 +31,10 @@ a { color: inherit; }
 .inst.on { background: #e7eaee; color: var(--ink); font-weight: 500; }
 .inst .q { color: var(--note); }
 .quiet { display: block; padding: 5px 8px 5px 20px; font-size: 12px; color: var(--ink-3); background: none; border: 0; text-align: left; }
-.vis { display: flex; align-items: center; gap: 6px; padding: 0 8px 6px 20px; font-size: 12px; color: var(--ink-3); }
-.vis button { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
-.vis button:hover { color: var(--ink); }
-.vis .rd { display: inline-flex; align-items: center; gap: 4px; }
 .vl { padding: 14px 16px; display: grid; gap: 10px; align-content: start; font-size: 13.5px; }
+.vl h3 { margin: 4px 0 0; font-size: 13px; font-weight: 600; }
+.vl .sub { color: var(--ink-3); font-size: 12.5px; }
+.vl input[type=text] { font: inherit; padding: 7px 9px; border: 1px solid var(--rule-2); border-radius: var(--r1); }
 .pv.small { inset: 12vh auto auto 50%; transform: translateX(-50%); width: min(420px, 92vw); }
 .vl label { display: flex; align-items: center; gap: 8px; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--note); display: inline-block; margin-left: 6px; vertical-align: 1px; }
@@ -54,6 +53,8 @@ a { color: inherit; }
 .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 3px rgba(21,24,29,.12); }
 .btn { border: 1px solid var(--rule-2); background: var(--sheet); color: var(--ink); border-radius: var(--r1); padding: 7px 12px; font-size: 13px; font-weight: 500; white-space: nowrap; text-decoration: none; display: inline-block; }
 .btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+.btn.commit { background: var(--person); border-color: var(--person); color: #fff; }
+.btn.danger { color: var(--note); border-color: var(--note); }
 .btn:disabled { background: var(--sheet); color: var(--ink-3); border-color: var(--rule-2); cursor: default; }
 .btn.sel { background: var(--paper); box-shadow: inset 0 1px 2px rgba(0,0,0,.08); }
 
@@ -260,9 +261,6 @@ function render() {
   renderCard();
 }
 
-const EYE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
-const READS = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5v14z"/></svg>';
-
 function renderSide() {
   let h = '';
   for (const c of tree) {
@@ -273,8 +271,6 @@ function renderSide() {
       const q = open.some(i => i.questions);
       h += `<a class="row series ${on ? 'on' : ''}" href="#/${enc(c.client)}/${enc(s.series)}"><span>${esc(s.series)}${q ? '<span class="dot"></span>' : ''}</span><span class="n">${open.length} open</span></a>`;
       if (!on) continue;
-      const shared = s.visible_to.includes('*') ? 'All series' : s.visible_to.join(', ');
-      h += `<div class="vis"><button data-act="visibility" title="Series that can read this one">${EYE}${shared ? esc(shared) : 'Private'}</button>${s.reads.length ? `<span class="rd" title="Series this one can read">${READS}${esc(s.reads.join(', '))}</span>` : ''}</div>`;
       const closed = s.instances.filter(i => i.status !== 'open');
       for (const i of s.instances.filter(i => i.status === 'open' || showClosed || i.label === cur.label)) {
         const st = i.running ? 'running' : i.questions ? `<span class="q">${i.questions} question${i.questions > 1 ? 's' : ''}</span>` : i.status;
@@ -282,6 +278,7 @@ function renderSide() {
       }
       h += `<button class="quiet" data-act="new-instance">+ New instance</button>`;
       if (closed.length) h += `<button class="quiet" data-act="toggle-closed">${showClosed ? 'Hide' : 'Show'} closed (${closed.length})</button>`;
+      h += `<button class="quiet" data-act="settings">Series settings</button>`;
     }
     h += `<button class="quiet" style="padding-left:8px" data-act="new-series" data-client="${esc(c.client)}">+ New series</button>`;
   }
@@ -301,7 +298,8 @@ function renderBar() {
     h += `<div class="state">${state}</div>`;
     h += `<button class="btn top" data-act="process">Process</button><button class="btn top ${ui.log ? 'sel' : ''}" data-act="log">Ops log</button>`;
     const off = data.run ? 'disabled title="Available when the run ends"' : '';
-    if (data.workspace.status === 'open') h += `<button class="btn top" data-act="abandon" ${off}>Abandon</button><button class="btn primary top" data-act="close" ${off}>Close instance</button>`;
+    if (data.workspace.status === 'open') h += `<button class="btn danger top" data-act="abandon" ${off}>Abandon</button><button class="btn commit top" data-act="close" ${off}>Close instance</button>`;
+    else h += `<button class="btn top" data-act="duplicate">Duplicate</button>`;
   }
   $('#bar').innerHTML = h;
 }
@@ -376,6 +374,7 @@ function logLine(e) {
     interrupt: () => `${w} interrupted the run`,
     close: () => `${w} closed the instance`,
     abandon: () => `${w} abandoned the instance`,
+    duplicate: () => `${w} made this instance as a copy of ${esc(e.from)}`,
   }[e.op]?.() ?? `${w} ${esc(e.op)}`;
   return `<div class="e"><span class="tm">${hhmm(e.at)}</span><div>${text}</div></div>`;
 }
@@ -466,7 +465,7 @@ function sheetTable(s, first) {
 function renderPv() {
   $('#pv').hidden = !pv;
   if (!pv) return;
-  $('#pv').className = 'pv' + (pv.vis ? ' small' : '');
+  $('#pv').className = 'pv' + (pv.settings ? ' small' : '');
   let h = `<div class="pvh"><b>${esc(pv.title)}</b>${pv.path ? `<a class="btn" href="${fileUrl(pv.path)}">Download</a>` : ''}<button class="btn" data-act="unpv">Close</button></div>`;
   if (pv.sheets) {
     if (pv.sheets.length > 1) h += `<div class="tabs">${pv.sheets.map((s, k) => `<button class="btn ${k === pv.sheet ? 'sel' : ''}" data-act="sheet" data-k="${k}">${esc(s.name)}</button>`).join('')}</div>`;
@@ -476,7 +475,13 @@ function renderPv() {
     h += `<div class="pvb"><pre>${esc(Object.entries(m.headers).map(([k, v]) => `${k}: ${v}`).join('\n') + (m.attachments.length ? `\nAttachments: ${m.attachments.join(', ')}` : '') + '\n\n' + m.text)}</pre></div>`;
   } else if (pv.image) h += `<div class="pvb"><img src="${fileUrl(pv.path)}" alt=""></div>`;
   else if (pv.text !== undefined) h += `<div class="pvb"><pre>${esc(pv.text)}</pre></div>`;
-  else if (pv.vis) h += `<div class="pvb vl">${['*', ...pv.vis.others].map(n => `<label><input type="checkbox" value="${esc(n)}" ${pv.vis.chosen.includes(n) ? 'checked' : ''}> ${n === '*' ? 'All series' : esc(n)}</label>`).join('')}<div><button class="btn primary" data-act="savevis">Save</button></div></div>`;
+  else if (pv.settings) {
+    const s = pv.settings;
+    h += `<div class="pvb vl"><h3>Name</h3><input type="text" id="sname" value="${esc(s.name)}"><h3>Visibility</h3><div class="sub">Other series that can see this one</div>`
+      + ['*', ...s.others].map(n => `<label><input type="checkbox" value="${esc(n)}" ${s.chosen.includes(n) ? 'checked' : ''}> ${n === '*' ? 'All series' : esc(n)}</label>`).join('')
+      + (s.reads.length ? `<div class="sub">This series can see ${esc(s.reads.join(', '))}.</div>` : '')
+      + '<div><button class="btn primary" data-act="savesettings">Save</button></div></div>';
+  }
   else h += `<div class="pvb"><div class="empty">No preview for this kind of file. Download it instead.</div></div>`;
   $('#pv').innerHTML = h + '<div class="pvn" id="pvn"></div>';
 }
@@ -522,17 +527,25 @@ document.addEventListener('click', async ev => {
   if (act === 'preview') await preview(el.dataset.file, data.workspace.items.find(i => i.id === el.dataset.item));
   if (act === 'process') await showProcess();
   if (act === 'unpv') { pv = null; renderPv(); }
-  if (act === 'visibility') {
+  if (act === 'settings') {
     const c = tree.find(c => c.client === cur.client), s = c.series.find(s => s.series === cur.series);
-    pv = { title: `Who can read ${s.series}`, vis: { others: c.series.map(x => x.series).filter(n => n !== s.series), chosen: s.visible_to } };
+    pv = { title: 'Series settings', settings: { name: s.series, others: c.series.map(x => x.series).filter(n => n !== s.series), chosen: s.visible_to, reads: s.reads } };
     renderPv();
   }
-  if (act === 'savevis') {
+  if (act === 'savesettings') {
+    const name = $('#sname').value.trim();
     const visible_to = [...document.querySelectorAll('#pv input:checked')].map(i => i.value);
-    await api(seriesPath(cur), { method: 'PUT', body: JSON.stringify({ visible_to }) });
+    await api(seriesPath(cur), { method: 'PUT', body: JSON.stringify({ name, visible_to }) });
     pv = null;
     renderPv();
+    if (name !== cur.series) return go(cur.client, name, cur.label);
     await refresh();
+  }
+  if (act === 'duplicate') {
+    const label = (prompt('Label for the copy:', `${cur.label} copy`) || '').trim();
+    if (!label) return;
+    await api(`${instPath()}/duplicate?as=${enc(label)}&by=${enc(who())}`, { method: 'POST' });
+    go(cur.client, cur.series, label);
   }
   if (act === 'sheet') { pv.sheet = Number(el.dataset.k); renderPv(); }
   if (act === 'cellnote') $('#pvn').textContent = el.dataset.note;

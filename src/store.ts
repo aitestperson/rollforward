@@ -1,4 +1,4 @@
-import { appendFileSync, chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { basename, dirname, extname, join, normalize, relative } from 'node:path';
 
@@ -20,6 +20,10 @@ const cache = new Map<string, Instance>();
 export function instance(dir: string): Instance {
   if (!cache.has(dir)) cache.set(dir, new Instance(dir));
   return cache.get(dir)!;
+}
+
+export function forget(seriesDir: string) {
+  for (const dir of cache.keys()) if (dirname(dir) === seriesDir) cache.delete(dir);
 }
 
 export function instances(seriesDir: string): Instance[] {
@@ -48,6 +52,17 @@ export function createInstance(seriesDir: string, label: string, by: string): In
   inst.doc.items = (from?.doc.items ?? []).map(({ id, name, kind }) => ({ id, name, kind, file: null, notes: [] }));
   inst.save();
   inst.append(by, 'create', { from: from ? basename(from.dir) : null });
+  return inst;
+}
+
+export function duplicateInstance(src: Instance, label: string, by: string): Instance {
+  const dir = join(src.series(), safeName(label));
+  if (existsSync(dir)) throw new HttpError(409, `${label} exists`);
+  cpSync(src.dir, dir, { recursive: true, filter: p => p !== join(src.dir, 'session') });
+  const inst = instance(dir);
+  inst.doc.status = 'open';
+  inst.save();
+  inst.append(by, 'duplicate', { from: basename(src.dir) });
   return inst;
 }
 

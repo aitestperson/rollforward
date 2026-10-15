@@ -13,7 +13,7 @@ Sources: [Layr design reference](https://layr.design/reference/layr-001-intentio
 
 ## Choices
 
-- **The colours carry provenance.** Blue marks a file a person uploaded and black a file the agent made, borrowing the spreadsheet habit of blue for typed-in values and black for calculated ones. Red is kept for notes, like Excel's comment triangle. There is no other accent colour.
+- **The colours carry provenance.** Blue marks a file a person uploaded and black a file the agent made, borrowing the spreadsheet habit of blue for typed-in values and black for calculated ones. Red is kept for notes, like Excel's comment triangle. The only other colour marks the two ways an instance ends: Close instance is solid blue, a person's commit, and Abandon is red, a discard.
 - **Type:** IBM Plex Sans, a plain engineered face. IBM Plex Mono is used only for code and addresses: file types, cell references, paths and tool calls. Numerals are tabular everywhere.
 - **Surfaces:** tiles have a 1px border and no shadow. Only floating things are raised: question cards, and Advanced when expanded. A card points at its tile, like an Excel comment. There are two radii: 4px for tiles and buttons, and 8px for cards.
 - **The awkward states are drawn:**
@@ -29,7 +29,7 @@ Sources: [Layr design reference](https://layr.design/reference/layr-001-intentio
 - Gradients, glass, glow, emoji, or sparkle and robot icons.
 - Pills or badges for ordinary labels, or icons in rounded squares.
 - Motion, except the spinner on a running step.
-- A colour whose meaning the legend doesn't give.
+- A colour whose meaning neither the legend nor the button's label gives.
 
 ## Tokens
 
