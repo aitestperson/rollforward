@@ -785,7 +785,12 @@ addEventListener('keydown', e => {
   if (pv) { pv = null; renderPv(); } else if (openItem) { openItem = null; renderCard(); renderPanes(); } else if (ui.adv) { ui.adv = false; renderAdv(); }
 });
 refresh();
-setInterval(() => { if (!document.hidden) refresh(); }, 4000);
+let polling = false;
+setInterval(async () => {
+  if (document.hidden || polling) return;
+  polling = true;
+  await refresh().finally(() => { polling = false; });
+}, 4000);
 </script>
 </body>
 </html>
