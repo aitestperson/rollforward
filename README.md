@@ -39,6 +39,8 @@ A link works until it's used. Each time it's opened it shows a new key, so a mai
 
 To reach it from the internet, run `tailscale funnel --bg 8780`.
 
+For a demo run in podman behind Tailscale Funnel, the justfile has `just invite NAME`, which prints the whole link, `just revoke NAME`, `just people`, `just logs`, and `just deploy`, which rebuilds it from this branch.
+
 **Security:** anyone signed in can steer the agent, which runs shell commands inside the container: it can read the API key, everyone's keys and every series, and reach whatever the host can reach.
 
 ## Without Docker

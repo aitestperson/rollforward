@@ -22,3 +22,32 @@ demo port="8780":
 # Run the tests
 test:
     node --test test/
+
+live := "rf-tailnet"
+cache := home_directory() / ".cache" / live
+
+# Print an invite link for NAME; it sets up their authenticator app, once
+invite name:
+    @echo "https://$(tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")')$(podman exec {{live}} node src/access.ts /data invite '{{name}}')"
+
+# Cut NAME off: their link, code and sessions stop working at once
+revoke name:
+    podman exec {{live}} node src/access.ts /data revoke '{{name}}'
+
+# List who is set up and who has an unused invite
+people:
+    podman exec {{live}} node src/access.ts /data list
+
+# Follow the live demo's log
+logs:
+    podman logs -f --tail 50 {{live}}
+
+# The demo series in the volume read their sources at this repo's demo/run/data-sources.
+# Rebuild the live demo from the committed totp branch and restart it, unless a run is going
+deploy:
+    git -C {{cache}}/repo fetch -q {{justfile_directory()}} totp
+    git -C {{cache}}/repo checkout -q --detach FETCH_HEAD
+    podman build -q -t rollforward-public {{cache}}/repo
+    if podman top {{live}} args 2>/dev/null | grep -q cli.js; then echo 'A run is going; deploy when it ends.'; exit 1; fi
+    podman rm -f {{live}}
+    podman run -d --name {{live}} --init --restart=always -p 127.0.0.1:8790:8780 --env-file {{cache}}/env -v {{live}}-data:/data -v {{cache}}/data-sources:{{justfile_directory()}}/demo/run/data-sources rollforward-public
