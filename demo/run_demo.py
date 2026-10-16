@@ -64,7 +64,7 @@ def started(label):
 
 
 def screen(s):
-    for i in s['workspace']['items']:
+    for i in s['doc']['items']:
         print(f"  [{i['kind']}] {i['id']}: {i['file']}{'  | ' + i['headline'] if i.get('headline') else ''}{'  | source: ' + i['source'] if i.get('source') else ''}")
         for n in i.get('notes') or []:
             q = f" {n['options']} default {n.get('default', 0)}" if n.get('options') else ''
@@ -85,7 +85,7 @@ def lines(path):
 
 def score(label, s, key='lines'):
     truth = json.loads((SRC / label / 'truth.json').read_text())[key]
-    outs = [i for i in s['workspace']['items'] if i['kind'] == 'output' and i['file'] and i['file'].startswith('working/')]
+    outs = [i for i in s['doc']['items'] if i['kind'] == 'output' and i['file'] and i['file'].startswith('working/')]
     if not outs:
         print('  SCORE: no agent output on screen')
         return
@@ -105,7 +105,7 @@ def score(label, s, key='lines'):
 
 
 def check(label, s):
-    items = s['workspace']['items']
+    items = s['doc']['items']
     placeholders = [i['id'] for i in items if i['id'][:1] == 'u' and i['id'][1:].split('_')[0].isdigit()]
     no_headline = [i['id'] for i in items if i['kind'] == 'output' and i['file'] and not i.get('headline')]
     sourced = [i['id'] for i in items if i.get('source')]
@@ -217,11 +217,11 @@ for label in ORDER:
         s = wait(label)
         screen(s)
         score(label, s)
-        out = next(i for i in s['workspace']['items'] if i['kind'] == 'output')
+        out = next(i for i in s['doc']['items'] if i['kind'] == 'output')
         upload(label, next((SRC / label / 'revision').iterdir()), 'out', by='sam', onto=out['id'])
         s = wait(label)
         screen(s)
-        q = next((n for i in s['workspace']['items'] for n in i.get('notes') or [] if n.get('options')
+        q = next((n for i in s['doc']['items'] for n in i.get('notes') or [] if n.get('options')
                   and not any(e['op'] == 'answer' and e.get('note') == n['id'] for e in s['log'])), None)
         if q:
             choice = next((k for k, o in enumerate(q['options']) if 'standing' in o.lower() or 'from now on' in o.lower()), 1)

@@ -21,6 +21,7 @@ Sources: [Layr design reference](https://layr.design/reference/layr-001-intentio
   - an output not built yet;
   - a run in progress, with Close disabled until it ends;
   - what each question defaults to if it's still unanswered at close.
+- **The sidebar is a cascade:** workspace, series, instance, each level indented under a rule. A row's actions sit in its corner, ⋯ for settings and + for a new child, so the list holds only things and never grows a row of buttons.
 - **Copy** names objects and consequences. There is no helper text that repeats a label. A legend in the sidebar teaches the colour code once.
 - **Light throughout.** A dark Advanced band looked like leftover developer scaffolding.
 

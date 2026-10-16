@@ -1,9 +1,9 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { createHmac } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { once } from 'node:events';
-import { cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -31,7 +31,8 @@ const code = (secret: string, step = Math.floor(Date.now() / 30_000)) => {
   return String((h.readUInt32BE(h[19] & 15) & 0x7fffffff) % 1_000_000).padStart(6, '0');
 };
 const cookieOf = (r: Response) => r.headers.get('set-cookie')!.split(';')[0];
-const seriesList = async () => (await json('/api')).find((c: { client: string }) => c.client === 'larkfield').series;
+const workspaces = () => json('/api');
+const seriesList = async () => (await workspaces()).find((w: { workspace: string }) => w.workspace === 'larkfield').series;
 const shown = async (name: string) => (await seriesList()).find((s: { series: string }) => s.series === name);
 
 before(async () => {
@@ -69,11 +70,11 @@ test('GET /api lists the series and its instances with statuses', async () => {
 
 test('a new instance starts from the last closed one; a new series can be made', async () => {
   assert.equal((await call('POST', at(series, '2026-09-13'))).status, 200);
-  const { workspace, log } = await json(at(series, '2026-09-13'));
-  const last = (await json(at(series, '2026-08-30'))).workspace;
-  assert.equal(workspace.status, 'open');
-  assert.deepEqual(workspace.items.map((i: { id: string }) => i.id), last.items.map((i: { id: string }) => i.id));
-  assert.ok(workspace.items.every((i: { file: unknown }) => i.file === null));
+  const { doc, log } = await json(at(series, '2026-09-13'));
+  const last = (await json(at(series, '2026-08-30'))).doc;
+  assert.equal(doc.status, 'open');
+  assert.deepEqual(doc.items.map((i: { id: string }) => i.id), last.items.map((i: { id: string }) => i.id));
+  assert.ok(doc.items.every((i: { file: unknown }) => i.file === null));
   assert.equal(log[0].op, 'create');
   assert.equal(log[0].from, '2026-08-30');
   assert.equal(log[0].fetch, true, '08-30 fetched inputs, so the new instance starts a run at once');
@@ -97,7 +98,8 @@ test('an upload lands read-only, becomes an item, and starts one run that ends w
   assert.equal(statSync(file).mode & 0o222, 0);
   const first = await json(at(monthly, label));
   assert.deepEqual(first.log.slice(-2).map((e: { op: string }) => e.op), ['upload', 'point']);
-  assert.ok(first.workspace.items.some((i: { file: string; kind: string }) => i.file === 'upload/x.csv' && i.kind === 'input'));
+  assert.equal(first.log.at(-2).sha256, createHash('sha256').update(bytes).digest('hex'));
+  assert.ok(first.doc.items.some((i: { file: string; kind: string }) => i.file === 'upload/x.csv' && i.kind === 'input'));
 
   let done;
   for (let i = 0; !done && i < 240; i++) {
@@ -110,14 +112,30 @@ test('an upload lands read-only, becomes an item, and starts one run that ends w
   assert.equal((await json(at(monthly, label))).log.filter((e: { op: string }) => e.op === 'run').length, 1, 'a run that never started is not retried');
 });
 
+test('an upload streams to disk as it arrives, and is refused if its instance closes meanwhile', async () => {
+  const label = '2026-09-20';
+  assert.equal((await call('POST', at(monthly, label))).status, 200);
+  let release!: () => void, sent = false;
+  const held = new Promise<void>(ok => { release = ok; });
+  const body = new ReadableStream({ async pull(c) { if (!sent) { sent = true; c.enqueue(new Uint8Array(1 << 20)); } else { await held; c.close(); } } });
+  const upload = fetch(`${base}${at(monthly, label, 'upload')}?by=t&pane=in&name=big.bin`, { method: 'POST', body, headers, duplex: 'half' } as RequestInit);
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal(readdirSync(join(root, '.tmp')).length, 1, 'the body is being written before it has all arrived');
+  assert.equal((await call('POST', at(monthly, label, 'close'))).status, 200);
+  release();
+  assert.equal((await upload).status, 409);
+  assert.deepEqual(readdirSync(join(root, '.tmp')), []);
+  assert.ok(!existsSync(join(root, 'larkfield', monthly, label, 'upload', 'big.bin')));
+});
+
 test('duplicate copies a closed instance into an open one, once', async () => {
   assert.equal((await call('POST', `${at(series, '2026-09-06', 'duplicate')}?as=x`)).status, 409);
   const copyPath = at(series, '2026-08-30 copy');
   const dup = `${at(series, '2026-08-30', 'duplicate')}?as=${encodeURIComponent('2026-08-30 copy')}`;
   assert.equal((await call('POST', dup)).status, 200);
-  const { workspace, log } = await json(copyPath);
-  assert.equal(workspace.status, 'open');
-  assert.deepEqual(workspace.items, (await json(at(series, '2026-08-30'))).workspace.items);
+  const { doc, log } = await json(copyPath);
+  assert.equal(doc.status, 'open');
+  assert.deepEqual(doc.items, (await json(at(series, '2026-08-30'))).doc.items);
   assert.equal(existsSync(join(root, 'larkfield', series, '2026-08-30 copy', 'session')), false);
   assert.equal(log.at(-1).op, 'duplicate');
   assert.equal(log.at(-1).from, '2026-08-30');
@@ -135,14 +153,14 @@ test('rename moves an open instance and logs it; an existing label is refused', 
 test('close and abandon end an open instance; a closed one takes no actions', async () => {
   assert.equal((await call('POST', at(series, '2026-09-06', 'close'))).status, 200);
   const closed = await json(at(series, '2026-09-06'));
-  assert.equal(closed.workspace.status, 'closed');
+  assert.equal(closed.doc.status, 'closed');
   assert.equal(closed.log.at(-1).op, 'close');
   for (const action of ['upload', 'steer', 'close', 'abandon'])
     assert.equal((await call('POST', `${at(series, '2026-09-06', action)}?name=y.csv`, 'x')).status, 409, action);
 
   assert.equal((await call('POST', at(series, '2026-09-13', 'abandon'))).status, 200);
   const ab = await json(at(series, '2026-09-13'));
-  assert.equal(ab.workspace.status, 'abandoned');
+  assert.equal(ab.doc.status, 'abandoned');
   assert.equal(ab.log.at(-1).op, 'abandon');
 });
 
@@ -165,6 +183,22 @@ test('series settings write series.json; a rename moves the folder and rewrites 
 
   assert.equal((await put(renamed, { name: monthly, visible_to: [] })).status, 409);
   assert.equal((await put(renamed, { name: series, visible_to: [monthly] })).status, 200);
+});
+
+test('a workspace can be made; a workspace or a series is archived and restored, and a renamed series stays archived', async () => {
+  const acme = async () => (await workspaces()).find((w: { workspace: string }) => w.workspace === 'Acme');
+  assert.equal((await call('POST', '/api/Acme')).status, 200);
+  assert.deepEqual(await acme(), { workspace: 'Acme', archived: false, series: [] });
+  assert.equal((await call('PUT', '/api/Acme', JSON.stringify({ archived: true }))).status, 200);
+  assert.equal((await acme()).archived, true);
+  assert.equal((await call('PUT', '/api/Acme', JSON.stringify({ archived: false }))).status, 200);
+  assert.equal((await acme()).archived, false);
+
+  const put = (name: string, to: string, archived: boolean) => call('PUT', at(name), JSON.stringify({ name: to, visible_to: [monthly], archived }));
+  assert.equal((await put(series, renamed, true)).status, 200);
+  assert.equal((await shown(renamed)).archived, true);
+  assert.equal((await put(renamed, series, false)).status, 200);
+  assert.equal((await shown(series)).archived, false);
 });
 
 test('files: uploads download as attachments; paths outside upload/ and working/ are refused', async () => {

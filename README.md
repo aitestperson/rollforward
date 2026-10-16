@@ -6,6 +6,7 @@ Recurring tasks, files in and files out. People drop this period's input files i
 
 - **The agent** is [Pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent), run over RPC with read, bash, edit and write tools, in the series folder. It copies and adapts the previous instance's scripts, so each instance's `working/` is a complete record of how its outputs were made.
 - **Inputs** are uploads, or sources a person points the agent to, such as a database, a mailbox folder or a web API. The agent keeps a frozen copy of what it read, and the tile shows where it came from.
+- **Workspaces hold series,** such as one client's. A workspace or a series can be archived, which hides it until it's restored.
 - **Series can share.** A series can let other series read it, one way.
 - **Everything is files on disk.** Each instance has `upload/` (people's files), `working/` (the agent's), `workspace.json` (what the screen shows) and `log.jsonl` (every event).
 

@@ -22,20 +22,27 @@ button { font: inherit; cursor: pointer; }
 a { color: inherit; }
 .app { display: grid; grid-template-columns: 236px 1fr auto; height: 100dvh; }
 
-.side { border-right: 1px solid var(--rule); padding: 16px 12px; display: flex; flex-direction: column; overflow: auto; background: var(--paper); }
-.client { padding: 2px 8px 10px; font-weight: 600; font-size: 15px; }
-.label { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); padding: 8px 8px 6px; }
-.row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--r1); text-decoration: none; }
-.row .n { color: var(--ink-3); font-size: 12px; font-weight: 400; white-space: nowrap; }
-.series.on { font-weight: 600; }
-.inst { padding: 5px 8px 5px 20px; color: var(--ink-2); font-size: 13px; }
+.side { border-right: 1px solid var(--rule); padding: 14px 10px; display: flex; flex-direction: column; overflow: auto; background: var(--paper); }
+.row { display: flex; align-items: center; gap: 2px; min-height: 30px; padding: 0 4px 0 8px; border-radius: var(--r1); text-decoration: none; }
+.row .nm { flex: 1; min-width: 0; padding: 5px 0; text-decoration: none; overflow-wrap: anywhere; }
+.row .n { color: var(--ink-3); font-size: 12px; font-weight: 400; white-space: nowrap; padding-left: 6px; }
+.head { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.ws { font-size: 14px; font-weight: 600; }
+.tree { margin-left: 14px; padding-left: 4px; border-left: 1px solid var(--rule-2); }
+.ser { font-size: 13.5px; color: var(--ink-2); }
+.ser.on { color: var(--ink); font-weight: 600; }
+.inst { font-size: 13px; color: var(--ink-2); }
 .inst.on { background: #e7eaee; color: var(--ink); font-weight: 500; }
 .inst .q { color: var(--note); }
-.inst.abandoned > span:first-child { text-decoration: line-through; }
-.quiet { display: block; padding: 5px 8px 5px 20px; font-size: 12px; color: var(--ink-3); background: none; border: 0; text-align: left; }
+.inst.abandoned .nm { text-decoration: line-through; }
+.archived .nm { color: var(--ink-3); }
+.add { all: unset; cursor: pointer; flex: none; width: 24px; height: 24px; display: grid; place-items: center; border-radius: var(--r1); color: var(--ink-3); font-size: 17px; line-height: 1; }
+.add:hover { background: var(--rule); color: var(--ink); }
+.quiet { display: block; padding: 5px 8px; font-size: 12px; color: var(--ink-3); background: none; border: 0; text-align: left; }
 .vl { padding: 14px 16px; display: grid; gap: 10px; align-content: start; font-size: 13.5px; }
 .vl h3 { margin: 4px 0 0; font-size: 13px; font-weight: 600; }
 .vl .sub { color: var(--ink-3); font-size: 12.5px; }
+.vl hr { width: 100%; margin: 6px 0 0; border: 0; border-top: 1px solid var(--rule); }
 .vl input[type=text] { font: inherit; padding: 7px 9px; border: 1px solid var(--rule-2); border-radius: var(--r1); }
 .pv.small { inset: 12vh auto auto 50%; transform: translateX(-50%); width: min(420px, 92vw); }
 .vl label { display: flex; align-items: center; gap: 8px; }
@@ -256,11 +263,11 @@ const hhmm = iso => iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit'
 const fname = f => f.split('/').pop();
 function fileUrl(path, kind = 'files') {
   const m = path.match(/^\.\.\/([^/]+)\/(.*)$/);
-  return `/${kind}/${[cur.client, cur.series, m ? m[1] : cur.label].map(enc).join('/')}/${(m ? m[2] : path).split('/').map(enc).join('/')}`;
+  return `/${kind}/${[cur.workspace, cur.series, m ? m[1] : cur.label].map(enc).join('/')}/${(m ? m[2] : path).split('/').map(enc).join('/')}`;
 }
 const ext = f => (f && f.includes('.') ? f.split('.').pop() : '').toUpperCase();
 
-let tree = [], cur = null, data = null, steps = [], stepsKey = '', openItem = null, showClosed = false, pv = null;
+let tree = [], cur = null, data = null, steps = [], stepsKey = '', openItem = null, showClosed = false, showArchived = false, pv = null;
 let seen = {}, prevSigs = {}, uploads = [], shown = '', refreshes = 0;
 const sig = i => `${i.file}|${i.notes?.length ?? 0}|${i.headline ?? ''}`;
 
@@ -296,17 +303,17 @@ async function api(path, opts) {
   try { return JSON.parse(t); } catch { return t; }
 }
 
-const seriesPath = c => `/api/${enc(c.client)}/${enc(c.series)}`;
+const seriesPath = c => `/api/${enc(c.workspace)}/${enc(c.series)}`;
 const instPath = () => `${seriesPath(cur)}/${enc(cur.label)}`;
-const go = (client, series, label) => { location.hash = '#/' + [client, series, label].filter(Boolean).map(enc).join('/'); };
+const go = (workspace, series, label) => { location.hash = '#/' + [workspace, series, label].filter(Boolean).map(enc).join('/'); };
 
 async function refresh() {
   const n = ++refreshes, t = await api('/api');
-  const [client, series, label] = location.hash.slice(2).split('/').filter(Boolean).map(decodeURIComponent);
-  const c = client ? t.find(c => c.client === client) : t[0];
-  const s = series ? c?.series.find(s => s.series === series) : c?.series[0];
+  const [workspace, series, label] = location.hash.slice(2).split('/').filter(Boolean).map(decodeURIComponent);
+  const w = workspace ? t.find(w => w.workspace === workspace) : t.find(w => !w.archived);
+  const s = series ? w?.series.find(s => s.series === series) : w?.series.find(s => !s.archived);
   const i = label ? s?.instances.find(i => i.label === label) : s?.instances.find(i => i.status === 'open') ?? s?.instances.at(-1);
-  const next = c && { client: c.client, series: s?.series, label: s && (label ?? i?.label) };
+  const next = w && { workspace: w.workspace, series: s?.series, label: s && (label ?? i?.label) };
   const path = i ? `${seriesPath(next)}/${enc(i.label)}` : '', d = path ? await api(path) : null;
   const key = `${path}:${d?.log.length}`, st = ui.adv && d && (d.run || key !== stepsKey) ? await api(path + '/steps') : null;
   if (n !== refreshes) return;
@@ -315,12 +322,12 @@ async function refresh() {
   if (st) [steps, stepsKey] = [st, key];
   const done = data && lastDone();
   if (done && was !== undefined && done.seq > was) toast(done.error ? `Run ${done.run} failed: ${done.error}` : `Run ${done.run} finished${done.summary ? ': ' + done.summary : ''}`, done.error ? '' : 'ok');
-  if (data) localStorage[`rev:${path}`] = data.workspace.rev;
+  if (data) localStorage[`rev:${path}`] = data.doc.rev;
   render();
 }
 
 function render() {
-  const qs = tree.flatMap(c => c.series.flatMap(s => s.instances)).reduce((t, i) => t + i.questions, 0);
+  const qs = tree.filter(w => !w.archived).flatMap(w => w.series.filter(s => !s.archived).flatMap(s => s.instances)).reduce((t, i) => t + i.questions, 0);
   document.title = `${qs ? `(${qs}) ` : ''}${cur?.label ? cur.label + ' \u00b7 ' : ''}rollforward`;
   renderSide();
   renderBar();
@@ -331,29 +338,38 @@ function render() {
 }
 
 function renderSide() {
-  let h = '';
-  for (const c of tree) {
-    h += `<div class="client">${esc(c.client)}</div><div class="label">Series</div>`;
-    for (const s of c.series) {
-      const on = cur && cur.client === c.client && cur.series === s.series;
-      const open = s.instances.filter(i => i.status === 'open');
-      const q = open.some(i => i.questions);
-      h += `<a class="row series ${on ? 'on' : ''}" href="#/${enc(c.client)}/${enc(s.series)}"><span>${esc(s.series)}${q ? '<span class="dot"></span>' : ''}</span><span class="n">${open.length} open</span></a>`;
+  const listed = (x, on) => !x.archived || showArchived || on;
+  const asks = s => !s.archived && s.instances.some(i => i.questions);
+  const btn = (act, title, glyph) => `<button class="add" data-act="${act}" title="${title}">${glyph}</button>`;
+  let h = `<div class="row head"><span class="nm">Workspaces</span>${btn('new-workspace', 'New workspace', '+')}</div>`;
+  for (const w of tree) {
+    const won = cur?.workspace === w.workspace;
+    if (!listed(w, won)) continue;
+    h += `<div class="row ws ${w.archived ? 'archived' : ''}"><a class="nm" href="#/${enc(w.workspace)}">${esc(w.workspace)}${!won && w.series.some(asks) ? '<span class="dot"></span>' : ''}</a>`
+      + (won ? btn('workspace-settings', 'Workspace settings', '\u22EF') + btn('new-series', 'New series', '+') : w.archived ? '<span class="n">archived</span>' : '') + '</div>';
+    if (!won) continue;
+    h += '<div class="tree">';
+    for (const s of w.series) {
+      const on = cur.series === s.series, open = s.instances.filter(i => i.status === 'open');
+      if (!listed(s, on)) continue;
+      h += `<div class="row ser ${on ? 'on' : ''} ${s.archived ? 'archived' : ''}"><a class="nm" href="#/${enc(w.workspace)}/${enc(s.series)}">${esc(s.series)}${!on && asks(s) ? '<span class="dot"></span>' : ''}</a>`
+        + (on ? btn('settings', 'Series settings', '\u22EF') + btn('new-instance', 'New instance', '+') : `<span class="n">${s.archived ? 'archived' : open.length ? `${open.length} open` : ''}</span>`) + '</div>';
       if (!on) continue;
-      const closed = s.instances.filter(i => i.status !== 'open');
+      const closed = s.instances.length - open.length;
+      h += '<div class="tree">';
       for (const i of s.instances.filter(i => i.status === 'open' || showClosed || i.label === cur.label)) {
-        const st = i.running ? '<span class="spin"></span> running' : i.queued ? '\u29D7 queued' : i.questions ? `<span class="q">${i.questions} question${i.questions > 1 ? 's' : ''}</span>` : i.status;
-        const k = `rev:/api/${enc(c.client)}/${enc(s.series)}/${enc(i.label)}`;
+        const st = i.running ? '<span class="spin"></span> running' : i.queued ? '\u29D7 queued' : i.questions ? `<span class="q">${i.questions} question${i.questions > 1 ? 's' : ''}</span>` : i.status === 'open' ? '' : i.status;
+        const k = `rev:/api/${enc(w.workspace)}/${enc(s.series)}/${enc(i.label)}`;
         localStorage[k] ??= i.rev;
-        h += `<a class="row inst ${i.status} ${cur.label === i.label ? 'on' : ''}" href="#/${enc(c.client)}/${enc(s.series)}/${enc(i.label)}"><span>${esc(i.label)}${i.rev > +localStorage[k] ? '<span class="dot k"></span>' : ''}</span><span class="n">${st}</span></a>`;
+        h += `<a class="row inst ${i.status} ${cur.label === i.label ? 'on' : ''}" href="#/${enc(w.workspace)}/${enc(s.series)}/${enc(i.label)}"><span class="nm">${esc(i.label)}${i.rev > +localStorage[k] ? '<span class="dot k"></span>' : ''}</span><span class="n">${st}</span></a>`;
       }
-      h += `<button class="quiet" data-act="new-instance">+ New instance</button>`;
-      if (closed.length) h += `<button class="quiet" data-act="toggle-closed">${showClosed ? 'Hide' : 'Show'} closed (${closed.length})</button>`;
-      h += `<button class="quiet" data-act="settings">Series settings</button>`;
+      if (closed) h += `<button class="quiet" data-act="toggle-closed">${showClosed ? 'Hide' : 'Show'} closed (${closed})</button>`;
+      h += '</div>';
     }
-    h += `<button class="quiet" style="padding-left:8px" data-act="new-series" data-client="${esc(c.client)}">+ New series</button>`;
+    h += '</div>';
   }
-  if (!tree.length) h += '<div class="empty">No clients yet. Make a folder under the data root.</div>';
+  const archived = tree.filter(w => w.archived).length + (tree.find(w => w.workspace === cur?.workspace)?.series.filter(s => s.archived).length ?? 0);
+  if (archived) h += `<button class="quiet" data-act="toggle-archived">${showArchived ? 'Hide' : 'Show'} archived (${archived})</button>`;
   h += `<div class="legend"><div><i class="p">Blue</i> uploaded by a person</div><div><i>Black</i> made by the agent</div><div><span class="tri"></span>a note, for information</div><div><span class="tri q"></span>a question for you</div><div><span class="dash"></span>expected, not there yet</div></div>`;
   put($('#side'), h);
 }
@@ -362,14 +378,14 @@ function lastDone() { return data.log.findLast(e => e.op === 'done'); }
 
 function renderBar() {
   let h = `<button class="menu" data-act="menu">☰</button>`;
-  h += `<div><div class="crumb">${esc(cur?.client ?? '')}${cur?.series ? ' · ' + esc(cur.series) : ''}</div><h1>${esc(cur?.label ?? 'No instance')}${data?.workspace.status === 'open' ? '<button class="ren" data-act="rename" title="Rename">\u270E</button>' : ''}</h1></div>`;
+  h += `<div><div class="crumb">${esc(cur?.workspace ?? '')}${cur?.series ? ' · ' + esc(cur.series) : ''}</div><h1>${esc(cur?.label ?? 'No instance')}${data?.doc.status === 'open' ? '<button class="ren" data-act="rename" title="Rename">\u270E</button>' : ''}</h1></div>`;
   if (data) {
     const d = lastDone();
-    const state = data.workspace.status !== 'open' ? `${data.workspace.status === 'closed' ? 'Closed' : 'Abandoned'} · read-only` : data.run ? `<span class="spin"></span>Agent working · run ${data.run.n}` : data.queued ? '\u29D7 Queued' : d ? `Agent idle · last run ${hhmm(d.at)}` : 'Waiting for files';
+    const state = data.doc.status !== 'open' ? `${data.doc.status === 'closed' ? 'Closed' : 'Abandoned'} · read-only` : data.run ? `<span class="spin"></span>Agent working · run ${data.run.n}` : data.queued ? '\u29D7 Queued' : d ? `Agent idle · last run ${hhmm(d.at)}` : 'Waiting for files';
     h += `<div class="state">${state}</div>`;
     h += `<button class="btn top" data-act="process">Process</button><button class="btn top ${ui.log ? 'sel' : ''}" data-act="log">Ops log</button>`;
     const off = data.run ? 'disabled title="Available when the run ends"' : '';
-    if (data.workspace.status === 'open') h += `<button class="btn danger top" data-act="abandon" ${off}>Abandon</button><button class="btn commit top" data-act="close" ${off}>Close instance</button>`;
+    if (data.doc.status === 'open') h += `<button class="btn danger top" data-act="abandon" ${off}>Abandon</button><button class="btn commit top" data-act="close" ${off}>Close instance</button>`;
     else h += `<button class="btn top" data-act="duplicate">Duplicate</button>`;
   }
   put($('#bar'), h);
@@ -404,26 +420,26 @@ function tile(item) {
 }
 
 function renderPanes() {
-  if (!data) return put($('#panes'), `<div class="empty">${cur?.label ? `No instance ${esc(cur.label)}.` : cur?.series ? 'No instance yet. Use “+ New instance”.' : 'Pick a series.'}</div>`);
-  const open = data.workspace.status === 'open', stored = localStorage[`seen:${instPath()}`];
+  if (!data) return put($('#panes'), `<div class="empty">${cur?.label ? `No instance ${esc(cur.label)}.` : cur?.series ? 'No instance yet. Make one with + by the series.' : cur ? 'No series yet. Make one with + by the workspace.' : 'No workspace yet. Make one with + by Workspaces.'}</div>`);
+  const open = data.doc.status === 'open', stored = localStorage[`seen:${instPath()}`];
   seen = stored ? JSON.parse(stored) : {};
-  if (!stored) markSeen(data.workspace.items);
+  if (!stored) markSeen(data.doc.items);
   let h = '';
   for (const [pane, kind, title] of [['in', 'input', 'Inputs'], ['out', 'output', 'Outputs']]) {
-    const items = data.workspace.items.filter(i => i.kind === kind);
+    const items = data.doc.items.filter(i => i.kind === kind);
     const have = items.filter(i => i.file).length;
     h += `<section class="pane ${pane === 'out' && data.run ? 'busy' : ''}" data-pane="${pane}"><div class="ph"><h2>${title}</h2><span class="c">${items.length ? `${have} of ${items.length}` : ''}</span>${open ? `<button class="btn" data-act="add" data-pane="${pane}">+ Add files</button>` : ''}</div>`;
     h += `<div class="grid">${items.map(tile).join('')}${uploads.filter(u => u.pane === pane && u.path === instPath()).map(u => `<div class="tile ghost"><div class="ext"><span>UPLOADING</span></div><div class="fn">${esc(u.f.name)}</div><div class="prog"><i style="width:${u.pct}%"></i></div></div>`).join('')}</div>`;
     if (pane === 'in') {
-      const shown = new Set(data.workspace.items.map(i => i.file)), also = new Map();
-      for (const i of data.workspace.items) for (const n of i.notes ?? []) for (const f of n.files ?? []) if (!shown.has(f) && !also.has(f)) also.set(f, i);
+      const shown = new Set(data.doc.items.map(i => i.file)), also = new Map();
+      for (const i of data.doc.items) for (const n of i.notes ?? []) for (const f of n.files ?? []) if (!shown.has(f) && !also.has(f)) also.set(f, i);
       if (also.size) h += `<div class="also"><div class="ah">Also used</div>${[...also].map(([f, i]) => `<div><a data-act="preview" data-file="${esc(f)}">${esc(fname(f))}</a> <span class="via">· noted on <a data-act="opencard" data-item="${esc(i.id)}">${esc(i.name)}</a></span></div>`).join('')}</div>`;
     }
     if (open) h += `<div class="hint">${pane === 'in' ? 'Drop files to add them. Drop onto a file to replace it.' : 'Drop a revised output onto its file.'}</div>`;
     h += '</section>';
   }
   put($('#panes'), h);
-  prevSigs = Object.fromEntries(data.workspace.items.map(i => [i.id, sig(i)]));
+  prevSigs = Object.fromEntries(data.doc.items.map(i => [i.id, sig(i)]));
 }
 
 const logLine = e => `<div class="e"><span class="tm">${hhmm(e.at)}</span><div>${logText(e)}</div></div>`;
@@ -431,7 +447,7 @@ const logLine = e => `<div class="e"><span class="tm">${hhmm(e.at)}</span><div>$
 function logText(e) {
   const person = e.by !== 'server' && e.by !== 'agent';
   const w = `<span class="w ${person ? 'p' : ''}">${esc(person ? e.by : e.by === 'agent' ? 'Agent' : 'Server')}</span>`;
-  const item = id => esc(data.workspace.items.find(i => i.id === id)?.name ?? id);
+  const item = id => esc(data.doc.items.find(i => i.id === id)?.name ?? id);
   const f = e.file ? `<div class="f"><a data-act="preview" data-file="${esc(e.file)}">${esc(e.file)}</a></div>` : '';
   return {
     create: () => `${w} opened the instance${e.from ? `<div class="d">Items carried over from ${esc(e.from)}.${e.fetch ? ' The agent starts fetching its inputs.' : ''}</div>` : ''}`,
@@ -464,7 +480,7 @@ function renderAdv() {
   $('#adv').className = 'adv' + (ui.adv ? ' open' : '');
   $('#adv').hidden = !data;
   if (!data) return;
-  $('#compose').hidden = data.workspace.status !== 'open';
+  $('#compose').hidden = data.doc.status !== 'open';
   $('#interrupt').disabled = !data.run;
   const d = lastDone();
   const cost = data.log.reduce((t, e) => t + (e.cost ?? 0), 0) + (data.run?.cost ?? 0);
@@ -539,9 +555,9 @@ function traceHtml() {
 
 function renderCard() {
   const card = $('#card');
-  const item = openItem && data?.workspace.items.find(i => i.id === openItem);
+  const item = openItem && data?.doc.items.find(i => i.id === openItem);
   if (!item) { card.hidden = true; return; }
-  const open = data.workspace.status === 'open';
+  const open = data.doc.status === 'open';
   let h = `<div class="cf">${esc(item.file ? fname(item.file) : item.name)}</div>`;
   if (item.file) {
     const p = provenance(item.file);
@@ -623,10 +639,12 @@ function renderPv() {
   else if (pv.text !== undefined) h += `<div class="pvb">${pv.md ? `<div class="say">${md(pv.text)}</div>` : `<pre>${esc(pv.text)}</pre>`}</div>`;
   else if (pv.settings) {
     const s = pv.settings;
-    h += `<div class="pvb vl"><h3>Name</h3><input type="text" id="sname" value="${esc(s.name)}"><h3>Visibility</h3><div class="sub">Other series that can see this one</div>`
+    h += '<div class="pvb vl">';
+    if (s.kind === 'series') h += `<h3>Name</h3><input type="text" id="sname" value="${esc(s.name)}"><h3>Visibility</h3><div class="sub">Other series that can see this one</div>`
       + ['*', ...s.others].map(n => `<label><input type="checkbox" value="${esc(n)}" ${s.chosen.includes(n) ? 'checked' : ''}> ${n === '*' ? 'All series' : esc(n)}</label>`).join('')
       + (s.reads.length ? `<div class="sub">This series can see ${esc(s.reads.join(', '))}.</div>` : '')
-      + '<div><button class="btn primary" data-act="savesettings">Save</button></div></div>';
+      + '<div><button class="btn primary" data-act="savesettings">Save</button></div><hr>';
+    h += `<h3>Archive</h3><div class="sub">${s.archived ? 'Archived: in the sidebar only under Show archived.' : `Hides the ${s.kind} from the sidebar, except under Show archived. Nothing in it changes.`}</div><div><button class="btn" data-act="archive">${s.archived ? 'Restore' : 'Archive'} ${s.kind}</button></div></div>`;
   }
   else if (pv.loading) h += `<div class="pvb"><div class="empty">Loading…</div></div>`;
   else h += `<div class="pvb"><div class="empty">No preview for this kind of file. Download it instead.</div></div>`;
@@ -657,7 +675,7 @@ async function showProcess() {
 }
 
 async function upload(files, pane, onto) {
-  const by = who(), path = instPath(), mine = files.map(f => ({ f, pane, path, pct: 0 })), before = new Set(data.workspace.items.map(i => i.file));
+  const by = who(), path = instPath(), mine = files.map(f => ({ f, pane, path, pct: 0 })), before = new Set(data.doc.items.map(i => i.file));
   uploads.push(...mine);
   renderPanes();
   for (const u of mine) {
@@ -673,7 +691,7 @@ async function upload(files, pane, onto) {
   }
   await refresh();
   if (shown !== path) return;
-  markSeen(data.workspace.items.filter(i => i.file?.startsWith('upload/') && !before.has(i.file)));
+  markSeen(data.doc.items.filter(i => i.file?.startsWith('upload/') && !before.has(i.file)));
   renderPanes();
 }
 
@@ -692,7 +710,7 @@ document.addEventListener('click', async ev => {
   if (el.id === 'advbar') { ui.adv = !ui.adv; if (ui.adv) steps = await api(instPath() + '/steps'); return renderAdv(); }
   if (el.classList.contains('tile')) {
     openItem = openItem === el.dataset.item ? null : el.dataset.item;
-    markSeen(data.workspace.items.filter(i => i.id === openItem));
+    markSeen(data.doc.items.filter(i => i.id === openItem));
     renderPanes();
     return renderCard();
   }
@@ -700,29 +718,40 @@ document.addEventListener('click', async ev => {
   if (act === 'menu') $('#side').classList.toggle('open');
   if (act === 'log') { ui.log = !ui.log; renderLog(); renderBar(); placeCard(); }
   if (act === 'uncard') { openItem = null; renderCard(); renderPanes(); }
-  if (act === 'opencard') { openItem = el.dataset.item; markSeen(data.workspace.items.filter(i => i.id === openItem)); renderPanes(); renderCard(); }
-  if (act === 'preview') await preview(el.dataset.file, data.workspace.items.find(i => i.id === el.dataset.item));
+  if (act === 'opencard') { openItem = el.dataset.item; markSeen(data.doc.items.filter(i => i.id === openItem)); renderPanes(); renderCard(); }
+  if (act === 'preview') await preview(el.dataset.file, data.doc.items.find(i => i.id === el.dataset.item));
   if (act === 'process') await showProcess();
   if (act === 'unpv') { pv = null; renderPv(); }
   if (act === 'settings') {
-    const c = tree.find(c => c.client === cur.client), s = c.series.find(s => s.series === cur.series);
-    pv = { title: 'Series settings', settings: { name: s.series, others: c.series.map(x => x.series).filter(n => n !== s.series), chosen: s.visible_to, reads: s.reads } };
+    const w = tree.find(w => w.workspace === cur.workspace), s = w.series.find(s => s.series === cur.series);
+    pv = { title: 'Series settings', settings: { kind: 'series', name: s.series, others: w.series.map(x => x.series).filter(n => n !== s.series), chosen: s.visible_to, reads: s.reads, archived: s.archived } };
     renderPv();
+  }
+  if (act === 'workspace-settings') {
+    pv = { title: 'Workspace settings', settings: { kind: 'workspace', archived: tree.find(w => w.workspace === cur.workspace).archived } };
+    renderPv();
+  }
+  if (act === 'archive') {
+    const s = pv.settings;
+    await api(s.kind === 'series' ? seriesPath(cur) : `/api/${enc(cur.workspace)}`, { method: 'PUT', body: JSON.stringify({ name: s.name, visible_to: s.chosen, archived: !s.archived }) });
+    pv = null;
+    renderPv();
+    await refresh();
   }
   if (act === 'savesettings') {
     const name = $('#sname').value.trim();
     const visible_to = [...document.querySelectorAll('#pv input:checked')].map(i => i.value);
-    await api(seriesPath(cur), { method: 'PUT', body: JSON.stringify({ name, visible_to }) });
+    await api(seriesPath(cur), { method: 'PUT', body: JSON.stringify({ name, visible_to, archived: pv.settings.archived }) });
     pv = null;
     renderPv();
-    if (name !== cur.series) return go(cur.client, name, cur.label);
+    if (name !== cur.series) return go(cur.workspace, name, cur.label);
     await refresh();
   }
   if (act === 'rename') {
     const label = (prompt('New label:', cur.label) || '').trim();
     if (!label || label === cur.label) return;
     await api(`${instPath()}/rename?as=${enc(label)}&by=${enc(who())}`, { method: 'POST' });
-    go(cur.client, cur.series, label);
+    go(cur.workspace, cur.series, label);
   }
   if (act === 'compare') {
     const p = pv;
@@ -734,11 +763,12 @@ document.addEventListener('click', async ev => {
     const label = (prompt('Label for the copy:', `${cur.label} copy`) || '').trim();
     if (!label) return;
     await api(`${instPath()}/duplicate?as=${enc(label)}&by=${enc(who())}`, { method: 'POST' });
-    go(cur.client, cur.series, label);
+    go(cur.workspace, cur.series, label);
   }
   if (act === 'sheet') { pv.sheet = Number(el.dataset.k); renderPv(); }
   if (act === 'cellnote') $('#pvn').textContent = el.dataset.note;
   if (act === 'toggle-closed') { showClosed = !showClosed; renderSide(); }
+  if (act === 'toggle-archived') { showArchived = !showArchived; renderSide(); }
   if (act === 'add' || act === 'replace') {
     const p = $('#picker');
     p.dataset.pane = el.dataset.pane;
@@ -752,7 +782,7 @@ document.addEventListener('click', async ev => {
     await refresh();
   }
   if (act === 'close') {
-    const qs = data.workspace.items.flatMap(i => i.notes ?? []).filter(n => n.options && questionState(n) === null);
+    const qs = data.doc.items.flatMap(i => i.notes ?? []).filter(n => n.options && questionState(n) === null);
     const msg = `Close ${cur.label}? It becomes an example for later instances.` + (qs.length ? '\n\nUnanswered questions take their defaults:\n' + qs.map(n => `• ${n.options[n.default ?? 0]}`).join('\n') : '');
     if (!confirm(msg)) return;
     await api(`${instPath()}/close?by=${enc(who())}`, { method: 'POST' });
@@ -767,13 +797,19 @@ document.addEventListener('click', async ev => {
     const label = (prompt('Label for the new instance, such as a date:') || '').trim();
     if (!label) return;
     await api(`${seriesPath(cur)}/${enc(label)}?by=${enc(who())}`, { method: 'POST' });
-    go(cur.client, cur.series, label);
+    go(cur.workspace, cur.series, label);
   }
   if (act === 'new-series') {
     const name = (prompt('Name of the new series:') || '').trim();
     if (!name) return;
-    await api(`/api/${enc(el.dataset.client)}/${enc(name)}`, { method: 'POST' });
-    go(el.dataset.client, name);
+    await api(`/api/${enc(cur.workspace)}/${enc(name)}`, { method: 'POST' });
+    go(cur.workspace, name);
+  }
+  if (act === 'new-workspace') {
+    const name = (prompt('Name of the new workspace, such as a client:') || '').trim();
+    if (!name) return;
+    await api(`/api/${enc(name)}`, { method: 'POST' });
+    go(name);
   }
 });
 
@@ -795,7 +831,7 @@ $('#interrupt').addEventListener('click', async () => {
 for (const type of ['dragover', 'dragleave', 'drop']) {
   $('#panes').addEventListener(type, e => {
     const pane = e.target.closest('.pane'), t = e.target.closest('.tile');
-    if (!pane || data?.workspace.status !== 'open' || !e.dataTransfer.types.includes('Files')) return;
+    if (!pane || data?.doc.status !== 'open' || !e.dataTransfer.types.includes('Files')) return;
     e.preventDefault();
     document.querySelectorAll('.drag').forEach(x => x.classList.remove('drag'));
     if (type === 'dragover') (t ?? pane).classList.add('drag');
