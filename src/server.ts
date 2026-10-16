@@ -44,8 +44,8 @@ function visibleTo(seriesDir: string): string[] {
 }
 
 function readable(seriesDir: string): string[] {
-  const name = basename(seriesDir), clientDir = dirname(seriesDir);
-  return dirs(clientDir).filter(s => s !== name && visibleTo(join(clientDir, s)).some(v => v === '*' || v === name));
+  const name = basename(seriesDir), workspaceDir = dirname(seriesDir);
+  return dirs(workspaceDir).filter(s => s !== name && visibleTo(join(workspaceDir, s)).some(v => v === '*' || v === name));
 }
 
 function kick(inst: Instance) {
@@ -150,11 +150,11 @@ function questions(inst: Instance): number {
 }
 
 function tree() {
-  return dirs(root).map(client => ({
-    client,
-    series: dirs(join(root, client)).map(series => ({
-      series, visible_to: visibleTo(join(root, client, series)), reads: readable(join(root, client, series)),
-      instances: instances(join(root, client, series)).map(i => ({
+  return dirs(root).map(workspace => ({
+    workspace, archived: existsSync(join(root, workspace, '.archived')),
+    series: dirs(join(root, workspace)).map(series => ({
+      series, archived: existsSync(join(root, workspace, series, '.archived')), visible_to: visibleTo(join(root, workspace, series)), reads: readable(join(root, workspace, series)),
+      instances: instances(join(root, workspace, series)).map(i => ({
         label: basename(i.dir), status: i.doc.status, rev: i.doc.rev, running: active.get(i.series())?.inst === i, queued: queued(i), questions: questions(i),
       })),
     })),
@@ -188,10 +188,10 @@ function steps(inst: Instance) {
 }
 
 async function file(res: ServerResponse, url: URL, preview: boolean) {
-  const [client, series, label, ...rest] = url.pathname.split('/').slice(2).map(decodeURIComponent);
+  const [workspace, series, label, ...rest] = url.pathname.split('/').slice(2).map(decodeURIComponent);
   const rel = rest.join('/');
   if (normalize(rel) !== rel || !/^(upload|working)\//.test(rel) || rel.split('/').includes('..')) throw new HttpError(400, 'bad path');
-  const dir = join(root, safeName(client), safeName(series), safeName(label)), path = join(dir, rel);
+  const dir = join(root, safeName(workspace), safeName(series), safeName(label)), path = join(dir, rel);
   if (!existsSync(path)) throw new HttpError(404, 'no such file');
   if (!realpathSync(path).startsWith(realpathSync(dir) + sep)) throw new HttpError(400, 'links must stay inside the instance');
   if (preview) {
@@ -209,8 +209,15 @@ async function file(res: ServerResponse, url: URL, preview: boolean) {
 }
 
 async function people(req: IncomingMessage, res: ServerResponse, url: URL) {
-  const [client, series, label, action] = url.pathname.split('/').slice(2).map(s => safeName(decodeURIComponent(s)));
-  const seriesDir = join(root, client, series);
+  const [workspace, series, label, action] = url.pathname.split('/').slice(2).map(s => safeName(decodeURIComponent(s)));
+  const workspaceDir = join(root, workspace);
+  if (!series) {
+    if (req.method === 'POST') mkdirSync(workspaceDir, { recursive: true });
+    else if (JSON.parse((await body(req)).toString()).archived) writeFileSync(join(workspaceDir, '.archived'), '');
+    else rmSync(join(workspaceDir, '.archived'), { force: true });
+    return send(res, 200, 'ok');
+  }
+  const seriesDir = join(workspaceDir, series);
   const by = url.searchParams.get('by') ?? 'someone';
   if (!label) {
     if (req.method === 'POST') {
@@ -218,15 +225,15 @@ async function people(req: IncomingMessage, res: ServerResponse, url: URL) {
       return send(res, 200, 'ok');
     }
     if (req.method === 'PUT') {
-      const { name, visible_to } = JSON.parse((await body(req)).toString());
+      const { name, visible_to, archived } = JSON.parse((await body(req)).toString());
       if (!Array.isArray(visible_to) || !visible_to.every(n => typeof n === 'string')) throw new HttpError(400, 'visible_to must be a list of series names');
-      const to = safeName(name), clientDir = join(root, client), updates = new Map([[seriesDir, visible_to]]);
+      const to = safeName(name), updates = new Map([[seriesDir, visible_to]]);
       if (to !== series) {
-        if (existsSync(join(clientDir, to))) throw new HttpError(409, `${to} exists`);
+        if (existsSync(join(workspaceDir, to))) throw new HttpError(409, `${to} exists`);
         if (active.has(seriesDir) || instances(seriesDir).some(i => debounce.has(i.dir))) throw new HttpError(409, 'wait for the run to end');
-        for (const s of dirs(clientDir)) {
-          const v = visibleTo(join(clientDir, s));
-          if (v.includes(series)) updates.set(join(clientDir, s), v.map(n => (n === series ? to : n)));
+        for (const s of dirs(workspaceDir)) {
+          const v = visibleTo(join(workspaceDir, s));
+          if (v.includes(series)) updates.set(join(workspaceDir, s), v.map(n => (n === series ? to : n)));
         }
       }
       for (const [dir, names] of updates) {
@@ -234,8 +241,10 @@ async function people(req: IncomingMessage, res: ServerResponse, url: URL) {
         writeFileSync(p + '.tmp', JSON.stringify({ visible_to: names }, null, 1), { mode: 0o444 });
         renameSync(p + '.tmp', p);
       }
+      if (archived) writeFileSync(join(seriesDir, '.archived'), '');
+      else rmSync(join(seriesDir, '.archived'), { force: true });
       if (to !== series) {
-        const dir = resolve(clientDir, to);
+        const dir = resolve(workspaceDir, to);
         renameSync(seriesDir, dir);
         forget(seriesDir);
         for (const f of globSync('*/session/*.jsonl', { cwd: dir })) {
@@ -257,7 +266,7 @@ async function people(req: IncomingMessage, res: ServerResponse, url: URL) {
   const inst = instance(dir);
   const a = active.get(seriesDir);
   const mine = a?.inst === inst ? a : undefined;
-  if (!action) return send(res, 200, { workspace: inst.doc, log: inst.log, run: mine ? { n: mine.n, cost: +mine.cost.toFixed(4) } : null, queued: queued(inst) });
+  if (!action) return send(res, 200, { doc: inst.doc, log: inst.log, run: mine ? { n: mine.n, cost: +mine.cost.toFixed(4) } : null, queued: queued(inst) });
   if (action === 'steps') return send(res, 200, steps(inst));
   if (req.method !== 'POST') throw new HttpError(405, 'POST only');
   if (action === 'duplicate') {

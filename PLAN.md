@@ -6,9 +6,10 @@
 
 ## Concepts
 
-- **Client:** a top-level folder of series, such as one client's or one team's. No run sees another client's files (enforced from M3).
+- **Workspace:** a top-level folder of series, such as one client's or one team's. No run sees another workspace's files (enforced from M3).
 - **Series:** a recurring transform, such as "Weekly borrowing base": each instance's input files become its output files. The folder name is the series' name. What an instance should contain comes from earlier instances, not from a declaration.
-- **Visibility:** a series can make itself visible to other series of the workspace, or to all of them. Their agents may then read it, never write it, and copy into their own `working/` what they rely on. Visibility is one way, and only the publishing series grants it. It isn't transitive, but what a reader copies can flow on.
+- **Visibility:** a series can make itself visible to other series of the workspace, or to all of them. Their agents may then read it, never write it, and copy into their own `working/` what they rely on. Visibility is one way, and only the publishing series grants it.
+- **Archive:** a workspace or a series that's no longer in use can be archived. It leaves the sidebar, except under "Show archived", until it's restored, and nothing in it changes. It isn't transitive, but what a reader copies can flow on.
 - **Instance:** one pass through a series, under a label people choose, such as "2026-08-24" or "Larkfield refinancing". Instances needn't be periods. They sort alphabetically by label, and only open ones show by default.
 - **Item:** one tile on an instance's screen. It has a stable id, a display name and a kind (input or output). It also has the file it currently shows, and its notes. Replacing a file means pointing the item at a new file.
 - **Example:** a closed instance. Its input items and output items are one example pair. The agent learns the transform from these pairs, and writes it down as scripts and notes in `working/`.
@@ -21,7 +22,7 @@
 
 ## Screens
 
-- **Sidebar:** the series. Under the open series are its open instances in label order, then "+ New instance", "Show closed (18)" and "Series settings". A red dot on a series marks an open question; a black dot on an instance marks changes since this browser last opened it.
+- **Sidebar:** a cascade of workspaces, series and instances. The open workspace lists its series, and the open series its open instances in label order, then "Show closed (18)". The open workspace and series carry their actions in their row's corner: ⋯ opens settings, and + makes a series or an instance. + by "Workspaces" makes a workspace. A red dot on a collapsed workspace or series marks an open question in it; a black dot on an instance marks changes since this browser last opened it.
 - **Instance:** two panes, Inputs and Outputs. Each is a drop zone of file tiles, one per item.
   - A tile shows the item's current file, its version, and who made it, by colour: blue for a person and black for the agent. Hover shows who, when, and what it replaced. Earlier files are in the ops log.
   - Dashed tiles are items with no file yet: on the left, inputs that earlier instances had and this one lacks; on the right, outputs not built yet. The agent's note says why.
@@ -42,16 +43,18 @@
 - **Abandon:** the other way an instance ends. It stays as it is, but it isn't an example, never becomes a new instance's starting point, and applies no defaults. It is also disabled while a run is going. Closed and abandoned instances both show under "Show closed".
 - **Duplicate:** a closed or abandoned instance can be copied, under a new label, into an open instance. The copy has its files, screen and log, but not its agent session, and its log records the copy as `duplicate`.
 - **Rename:** an open instance's label changes from the pencil by its title, between runs. The log records `rename`.
-- **Series settings:** the series' name, and its visibility: the other series that can see it. Renaming moves the series folder, and waits until no run is going.
+- **Series settings:** the series' name, its visibility (the other series that can see it) and Archive. Renaming moves the series folder, and waits until no run is going. **Workspace settings** hold only Archive for now. An archived workspace or series is restored from its settings, under "Show archived".
 - **Names:** until M3 adds sign-in, the page asks for a name once and keeps it in the browser.
 
 ## Storage
 
-Clients are folders on the host's disk. There is no database.
+Workspaces are folders on the host's disk. There is no database.
 
-    <client>/
+    <workspace>/              e.g. "Larkfield"
+      .archived               there while the workspace is archived, set by people through the server
       <series>/               e.g. "Weekly borrowing base"; moved only by a rename in Series settings
         series.json           {"visible_to": [series names, or "*"]}, set by people through the server, read-only
+        .archived             there while the series is archived
         <label>/              an instance: a folder holding workspace.json, made by New instance
           upload/             people's files, as uploaded, read-only
           working/            the agent's area: scripts, process.md, drafts, outputs and its own inputs
@@ -59,7 +62,7 @@ Clients are folders on the host's disk. There is no database.
           log.jsonl           everything that happened in the instance, written by the server
           session/            the instance's Pi session, shown in Advanced
 
-- **The server holds each instance's workspace and log.** They needn't be files, but who owns what stays the same. The server saves the workspace to `workspace.json` (a temporary file renamed into place, read-only) and appends each event to `log.jsonl`. Closed instances therefore stay plain folders.
+- **The server holds each instance's screen and log.** They needn't be files, but who owns what stays the same. The server saves the screen to `workspace.json` (a temporary file renamed into place, read-only) and appends each event to `log.jsonl`. Closed instances therefore stay plain folders.
 - **Who writes what:**
   - People upload, answer, steer, interrupt and close, all through the server.
   - The server places each upload at once, creates and closes instances, and is the only writer of the log.
@@ -67,9 +70,9 @@ Clients are folders on the host's disk. There is no database.
 - **`upload/` belongs to people.** Nobody moves, renames or changes these files. Each streams, as it arrives, to a temporary file in the data root's `.tmp/`, which the server empties when it starts; it is then renamed into place and made read-only. An upload may take up to an hour, and is refused if its instance closed or moved meanwhile. A repeated name becomes `<stem>_<n><ext>`, with the lowest free n. Names and labels have `/`, `\` and control characters replaced, and may not start with `.`.
 - **`working/` belongs to the agent,** which may do anything there with one limit. A file the screen has shown never changes again: the server makes it read-only and logs its hash, so a new version gets a new name.
 - **`rf`** is a small command on the agent's `PATH`:
-  - `rf show` prints the workspace, including its `rev`, which the server bumps on every change.
+  - `rf show` prints the screen, `workspace.json`, including its `rev`, which the server bumps on every change.
   - `rf reply TEXT` answers a person's question; the server logs it as `reply`.
-  - `rf put FILE` replaces the workspace with FILE. The server rejects it if its `rev` isn't current, because someone changed the workspace since the agent read it; the agent then re-reads and merges. It also rejects an invalid document, listing the reasons.
+  - `rf put FILE` replaces the screen with FILE. The server rejects it if its `rev` isn't current, because someone changed the screen since the agent read it; the agent then re-reads and merges. It also rejects an invalid document, listing the reasons.
   - **Valid** means:
     - every item has a unique id, a name, and a kind of input or output;
     - `file` is null, or the path of an existing file under `upload/` or `working/`, relative to the instance folder;
@@ -86,7 +89,7 @@ Clients are folders on the host's disk. There is no database.
 
 The schemas are loose, and unknown fields are ignored, so the agent and the UI can extend them independently. The examples are made up. The `//` comments are annotations for this plan, not part of the data.
 
-**The workspace**, after Sam's revision and the agent's run 3:
+**The screen** (`workspace.json`), after Sam's revision and the agent's run 3:
 
     {
       "rev": 31,
@@ -201,10 +204,10 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
    The demo can run behind `tailscale serve`, to try it from a phone.
 
    Then add a second series, such as a monthly rec whose day-2 GL listing arrives later.
-3. **M3, hosting.** Sign-in, one folder per client, and backups. Pi runs in Docker Sandboxes, built from Docker's Pi kit plus Python, the spreadsheet libraries and `rf`.
+3. **M3, hosting.** Sign-in, one workspace per client, and backups. Pi runs in Docker Sandboxes, built from Docker's Pi kit plus Python, the spreadsheet libraries and `rf`.
    - Each sandbox is a microVM. The series folder is mounted read-only; only the instance's `working/` and `session/` are writable.
    - **Network:** outbound traffic is denied except to the model API and the agent API. Docker's proxy adds the model key on the way out, so the key never enters the sandbox. The agent API is reached at `host.docker.internal` after `sbx policy allow network --sandbox <name> localhost:<port>`.
-   - **The agent API gets its own port.** Each call carries a per-run token that is bound to one instance and expires when the run ends. A sandbox can then never reach another client through the server.
+   - **The agent API gets its own port.** Each call carries a per-run token that is bound to one instance and expires when the run ends. A sandbox can then never reach another workspace through the server.
    - Local sandboxes are free, including for commercial use.
 
 ## Stack
@@ -220,7 +223,7 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
 - Per-user read state, and notifications by email or Teams.
 - One series' output as another series' input.
 - Deleting a wrong upload, such as another client's file, for real. In v0 the agent can only take it off the screen.
-- **A super agent** (an end state, not yet tested with users). Like a finance system's super user, it can read every series and instance of a client. It makes no deliverables; it can only:
+- **A super agent** (an end state, not yet tested with users). Like a finance system's super user, it can read every series and instance of a workspace. It makes no deliverables; it can only:
   - send a note to a series' agent, now or for its next instance;
   - alert a person, such as "someone else is doing X; cross-check with them."
 
@@ -230,7 +233,7 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
 
 1. **Name:** rollforward.
 2. **Storage location:** on the host's disk.
-3. **Agent's reach:** its own series, with all of that series' instances. A client-wide super agent comes later.
+3. **Agent's reach:** its own series, with all of that series' instances. A workspace-wide super agent comes later.
 4. **Closing:** an explicit "Close instance".
 5. **Stack:** TypeScript on Node.
 6. **Model access:** through OpenRouter.
@@ -241,12 +244,12 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
 11. **Storage:**
     - `upload/` holds people's files, which nobody ever moves or changes; a repeated name gets `_2`.
     - `working/` is the agent's.
-    - The workspace maps items to files, with notes. The server and the agent both write it.
+    - The screen, `workspace.json`, maps items to files, with notes. The server and the agent both write it.
     - The log records every event, and only the server writes it. The agent reads it to see what changed.
     - A replacement is the agent repointing an item.
 12. **Names:** unit becomes **series**, and cycle becomes **instance**. Instances have labels rather than periods. They sort alphabetically, and by default only open ones show.
 13. **Agent-made inputs:** the agent can create inputs too, as files in `working/`.
-14. **Not files:** the workspace and the log needn't be files the agent edits; any sync method will do, as long as who owns what stays the same.
+14. **Not files:** the screen and the log needn't be files the agent edits; any sync method will do, as long as who owns what stays the same.
 15. **Review, then build:** two Opus 5.5 agents review the plan, the second validating the first, and then M1 is built.
 16. **No pass bars or automatic checks** (15 Oct): agents make the call, and build checks as scripts if they need them. The product isn't aimed at finance, and shouldn't be over-explained.
 17. **Key and additional inputs; evidence and working** (15 Oct). See Concepts.
@@ -255,6 +258,7 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
 20. **Two end states** (15 Oct): Close or Abandon.
 21. **Series visibility** (15 Oct): one way, granted by the publishing series, read-only for the reader; one workspace for now. People's roles per series (owner, member, visitor) come later.
 22. **Duplicate and series settings** (15 Oct): a closed or abandoned instance can be duplicated into an open one. Each series has settings, for now its name and its visibility to other series.
+23. **Workspaces** (16 Oct): the top-level folder is a workspace, such as a client's. The sidebar cascades workspace, series and instance, with each row's actions in its corner rather than as rows of their own. A workspace or a series can be archived, which hides it until it's restored; nothing in it changes, and its runs carry on.
 
 ## Proposed by the agent (open to change)
 
@@ -263,11 +267,11 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
 3. If an item points at a person's upload, the agent repoints it to its own file only by asking first.
 4. A person's revision starts a run that rebuilds the outputs that depend on it.
 5. Notes stay out of the deliverable.
-6. The agent changes the workspace through `rf`, which rejects a stale or invalid put (decision 14).
+6. The agent changes the screen through `rf`, which rejects a stale or invalid put (decision 14).
 7. A file the screen has shown is read-only, and the log keeps its hash.
 8. The ops log is a side panel.
 9. There is one Pi session per instance.
-10. The top-level folder is a client, and a series' name is its folder name.
+10. A series' name is its folder name.
 11. A new instance starts from the most recently closed instance, by close time rather than label order.
 12. The colour code: blue for what a person put in, black for what the agent made, red for notes ([docs/design.md](docs/design.md)).
 13. The runner's cursor: events the agent never received start another run when the current one settles, except after an Interrupt.
