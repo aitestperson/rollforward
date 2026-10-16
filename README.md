@@ -37,6 +37,8 @@ You need Node 26 and uv. LibreOffice is optional, for recalculating formula work
     uv venv .venv && uv pip install --python .venv/bin/python -r requirements.txt
     node src/server.ts DATA_ROOT [PORT]
 
+The [justfile](justfile) has these and more as recipes; `just` lists them.
+
 - **Pi credentials:** Pi needs `OPENROUTER_API_KEY` or a Pi login.
 - **Pi settings:** `"steeringMode": "all"` in `~/.pi/agent/settings.json`.
 - **Environment variables:**
