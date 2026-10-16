@@ -1,8 +1,9 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { once } from 'node:events';
-import { cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs';
+import { cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -82,6 +83,7 @@ test('an upload lands read-only, becomes an item, and starts one run that ends w
   assert.equal(statSync(file).mode & 0o222, 0);
   const first = await json(at(monthly, label));
   assert.deepEqual(first.log.slice(-2).map((e: { op: string }) => e.op), ['upload', 'point']);
+  assert.equal(first.log.at(-2).sha256, createHash('sha256').update(bytes).digest('hex'));
   assert.ok(first.workspace.items.some((i: { file: string; kind: string }) => i.file === 'upload/x.csv' && i.kind === 'input'));
 
   let done;
@@ -93,6 +95,22 @@ test('an upload lands read-only, becomes an item, and starts one run that ends w
   assert.ok(done.error, 'no model reachable, so the run carries an error');
   await new Promise(r => setTimeout(r, 1000));
   assert.equal((await json(at(monthly, label))).log.filter((e: { op: string }) => e.op === 'run').length, 1, 'a run that never started is not retried');
+});
+
+test('an upload streams to disk as it arrives, and is refused if its instance closes meanwhile', async () => {
+  const label = '2026-09-20';
+  assert.equal((await call('POST', at(monthly, label))).status, 200);
+  let release!: () => void, sent = false;
+  const held = new Promise<void>(ok => { release = ok; });
+  const body = new ReadableStream({ async pull(c) { if (!sent) { sent = true; c.enqueue(new Uint8Array(1 << 20)); } else { await held; c.close(); } } });
+  const upload = fetch(`${base}${at(monthly, label, 'upload')}?by=t&pane=in&name=big.bin`, { method: 'POST', body, duplex: 'half' } as RequestInit);
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal(readdirSync(join(root, '.tmp')).length, 1, 'the body is being written before it has all arrived');
+  assert.equal((await call('POST', at(monthly, label, 'close'))).status, 200);
+  release();
+  assert.equal((await upload).status, 409);
+  assert.deepEqual(readdirSync(join(root, '.tmp')), []);
+  assert.ok(!existsSync(join(root, 'larkfield', monthly, label, 'upload', 'big.bin')));
 });
 
 test('duplicate copies a closed instance into an open one, once', async () => {

@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { createReadStream, existsSync, globSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { createReadStream, createWriteStream, existsSync, globSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { pipeline } from 'node:stream/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { basename, dirname, join, normalize, resolve, sep } from 'node:path';
@@ -14,6 +15,9 @@ const page = join(app, 'web', 'index.html');
 const exec = promisify(execFile);
 const port = Number(process.argv[3] ?? 8780);
 const LIMIT_MS = Number(process.env.RF_LIMIT_MIN ?? 120) * 60_000;
+const tmpDir = join(root, '.tmp');
+rmSync(tmpDir, { recursive: true, force: true });
+mkdirSync(tmpDir);
 
 type Active = { inst: Instance; n: number; token: string; run?: Run; sent: number; seen: number; texts: Map<string, number>; interrupted: boolean; done: boolean; cost: number; timer?: NodeJS.Timeout };
 const active = new Map<string, Active>();
@@ -262,8 +266,13 @@ async function people(req: IncomingMessage, res: ServerResponse, url: URL) {
   }
   if (inst.doc.status !== 'open') throw new HttpError(409, `instance is ${inst.doc.status}`);
   if (action === 'upload') {
-    const pane = url.searchParams.get('pane') === 'out' ? 'out' : 'in';
-    inst.upload(by, url.searchParams.get('name') ?? 'file', await body(req), pane, url.searchParams.get('onto'));
+    const pane = url.searchParams.get('pane') === 'out' ? 'out' : 'in', tmp = join(tmpDir, randomUUID()), hash = createHash('sha256');
+    try {
+      await pipeline(req, async function* (chunks: AsyncIterable<Buffer>) { for await (const c of chunks) { hash.update(c); yield c; } }, createWriteStream(tmp));
+      inst.upload(by, url.searchParams.get('name') ?? 'file', tmp, hash.digest('hex'), pane, url.searchParams.get('onto'));
+    } finally {
+      rmSync(tmp, { force: true });
+    }
   } else if (action === 'answer') {
     const { note, choice } = JSON.parse((await body(req)).toString());
     inst.answer(by, note, choice);
@@ -289,7 +298,7 @@ async function people(req: IncomingMessage, res: ServerResponse, url: URL) {
   send(res, 200, 'ok');
 }
 
-createServer(async (req, res) => {
+createServer({ requestTimeout: 60 * 60_000 }, async (req, res) => {
   const url = new URL(req.url!, 'http://x');
   try {
     const site = req.headers['sec-fetch-site'];

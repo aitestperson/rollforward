@@ -105,18 +105,16 @@ export class Instance {
     return this.log.findLast(e => e.op === 'close')?.at ?? '';
   }
 
-  upload(by: string, name: string, bytes: Buffer, pane: 'in' | 'out', onto: string | null) {
+  upload(by: string, name: string, tmp: string, sha256: string, pane: 'in' | 'out', onto: string | null) {
+    if (this.doc.status !== 'open' || !existsSync(join(this.dir, 'workspace.json'))) throw new HttpError(409, 'the instance was closed or moved during the upload');
     const target = onto ? this.doc.items.find(i => i.id === onto) : null;
     if (onto && !target) throw new HttpError(400, `no item ${onto}`);
     const clean = safeName(name), ext = extname(clean), stem = clean.slice(0, clean.length - ext.length);
     mkdirSync(join(this.dir, 'upload'), { recursive: true });
     let file = `upload/${clean}`;
     for (let n = 2; existsSync(join(this.dir, file)); n++) file = `upload/${stem}_${n}${ext}`;
-    const path = join(this.dir, file);
-    writeFileSync(path + '.tmp', bytes);
-    renameSync(path + '.tmp', path);
-    chmodSync(path, 0o444);
-    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    renameSync(tmp, join(this.dir, file));
+    chmodSync(join(this.dir, file), 0o444);
     const up = this.append(by, 'upload', { file, pane, onto, sha256 });
     if (target) {
       this.append('server', 'point', { item: target.id, file, was: target.file });

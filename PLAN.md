@@ -64,7 +64,7 @@ Clients are folders on the host's disk. There is no database.
   - People upload, answer, steer, interrupt and close, all through the server.
   - The server places each upload at once, creates and closes instances, and is the only writer of the log.
   - The agent decides the items and the notes. It changes them only through `rf`, and reads `log.jsonl` directly.
-- **`upload/` belongs to people.** Nobody moves, renames or changes these files. Each is saved by renaming a temporary file, then made read-only. A repeated name becomes `<stem>_<n><ext>`, with the lowest free n. Names and labels have `/`, `\` and control characters replaced, and may not start with `.`.
+- **`upload/` belongs to people.** Nobody moves, renames or changes these files. Each streams, as it arrives, to a temporary file in the data root's `.tmp/`, which the server empties when it starts; it is then renamed into place and made read-only. An upload may take up to an hour, and is refused if its instance closed or moved meanwhile. A repeated name becomes `<stem>_<n><ext>`, with the lowest free n. Names and labels have `/`, `\` and control characters replaced, and may not start with `.`.
 - **`working/` belongs to the agent,** which may do anything there with one limit. A file the screen has shown never changes again: the server makes it read-only and logs its hash, so a new version gets a new name.
 - **`rf`** is a small command on the agent's `PATH`:
   - `rf show` prints the workspace, including its `rev`, which the server bumps on every change.
