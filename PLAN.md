@@ -11,35 +11,36 @@
 - **Visibility:** a series can make itself visible to other series of the workspace, or to all of them. Their agents may then read it, never write it, and copy into their own `working/` what they rely on. Visibility is one way, and only the publishing series grants it.
 - **Archive:** a workspace or a series that's no longer in use can be archived. It leaves the sidebar, except under "Show archived", until it's restored, and nothing in it changes. It isn't transitive, but what a reader copies can flow on.
 - **Instance:** one pass through a series, under a label people choose, such as "2026-08-24" or "Larkfield refinancing". Instances needn't be periods. They sort alphabetically by label, and only open ones show by default.
-- **Item:** one tile on an instance's screen. It has a stable id, a display name and a kind (input or output). It also has the file it currently shows, and its notes. Replacing a file means pointing the item at a new file.
+- **Item:** one tile on an instance's screen. It has a stable id, a display name and a kind: input, step or output. A **step** is an intermediate result a reviewer would check, such as "Eligible AR", in a file the agent writes. An item also has the file it currently shows, the items it's made from (`from`), and its notes. Replacing a file means pointing the item at a new file.
+- **Graph:** the items, joined by what each is made from. It's a picture for people: nothing runs it, and the agent's scripts needn't follow it.
 - **Example:** a closed instance. Its input items and output items are one example pair. The agent learns the transform from these pairs, and writes it down as scripts and notes in `working/`.
 - **Run:** one stretch of agent work on an instance, started by an upload, an answer or a Steer. Runs are internal; the ops log and Advanced show them.
 - **Note:** an agent comment on an item, pinned to a place in the file, such as a cell, where that matters. A **question** is a note with options and a default.
 - **Key and additional inputs:**
   - An input item is a **key input**: the output is made from it, and the series expects it every time.
   - Anything else a note relies on, such as an email or a document, is an **additional input**. The note lists it in `files`, and the page shows it under the inputs as "Also used".
-  - Where a file came from is a separate question. It is **evidence** if it was taken from outside as it is (an upload, or a file the agent fetched), and **working** if the agent's own steps made it.
+  - Where a file came from is a separate question. It is **evidence** if it was taken from outside as it is (an upload, or a file the agent fetched), and **working** if the agent made it.
 
 ## Screens
 
 - **Sidebar:** a cascade of workspaces, series and instances. The open workspace lists its series, and the open series its open instances in label order, then "Show closed (18)". The open workspace and series carry their actions in their row's corner: ⋯ opens settings, and + makes a series or an instance. + by "Workspaces" makes a workspace. A red dot on a collapsed workspace or series marks an open question in it; a black dot on an instance marks changes since this browser last opened it.
-- **Instance:** two panes, Inputs and Outputs. Each is a drop zone of file tiles, one per item.
-  - A tile shows the item's current file, its version, and who made it, by colour: blue for a person and black for the agent. Hover shows who, when, and what it replaced. Earlier files are in the ops log.
-  - Dashed tiles are items with no file yet: on the left, inputs that earlier instances had and this one lacks; on the right, outputs not built yet. The agent's note says why.
+- **Instance:** the graph. Inputs come first, then the steps, column by column, and lines join each tile to what it's made from. Outputs have their own column on the right, which scrolls on its own, so they're always in view. Hovering a tile highlights what feeds it and what it feeds. Outputs and the rest are the two drop zones.
+  - A tile shows the item's name, its current file and version, and who made it, by colour: blue for a person and black for the agent. Hover shows who, when, and what it replaced. Earlier files are in the ops log.
+  - Dashed tiles are items with no file yet: inputs that earlier instances had and this one lacks, and steps and outputs not built yet. The agent's note says why.
   - The agent can add inputs of its own, such as a table it extracted from an emailed PDF. Their files live in `working/`, so they show as agent-made.
   - An output's tile shows the agent's one-line headline. An input the agent fetched shows its source. Under the input tiles, "Also used" lists the files that notes cite and no tile shows.
   - A corner marks a tile with agent notes: gray for a note, which is for information, and red for a question waiting for a person. Hover shows them, with where in the file they apply. A question shows its options as buttons, and says which applies if it's still unanswered at close; clicking one answers it.
   - A drop is a hint. The server adds each dropped file as a new item at once, even mid-run: an output if it was dropped on Outputs, otherwise an input, and the log records the tile it was dropped on, if any. The agent then decides what it is, such as a replacement for an input's file, and says so in a note.
   - There is no text box. People drop files, click answers and close the instance.
 - **State hints:** a spinner marks the running instance in the sidebar and the top bar, with a stripe along Outputs; ⧗ marks one waiting to run. A tile flashes when it changes and keeps a black dot until opened. An unanswered question's corner pulses, and an answer shows a spinner until the agent has read it. Uploads show progress, a finished run and an error each show a toast, the tab title counts open questions, Esc closes the top layer, and abandoned instances are struck through.
-- **Not shown:** `process.md`, the agent's own account of the process, which points at its scripts.
+- **Not shown:** `process.md`, the agent's own account of the process, which points at its scripts. The graph is the process for people.
 - **Ops log:** a side panel listing who did what, when: uploads, runs, every change the screen showed, answers, steers, the agent's replies and the close. Earlier files open from here.
 - **Preview** shows a spreadsheet with its noted cells marked. If the file replaced an earlier one, "Compare with previous" highlights the cells that changed, and a click shows the old value.
-- **Advanced:** a bar along the bottom that expands over the panes, like VS Code's terminal panel.
+- **Advanced:** a bar along the bottom that expands over the graph, like VS Code's terminal panel.
   - It shows what the agent does, like Claude Code: each run starts with what triggered it, plus its time and cost. The agent's messages read as text, and each tool call is one line with a short result. Consecutive calls fold into a summary such as "Read 3 files, ran 2 commands". Each call expands to its full output, and failures are red. During a run it is live. Past runs are read from the instance's Pi session file.
   - It is the only place to type. **Steer** sends the agent a message, and starts a run if none is going. **Interrupt** stops the run. The agent answers a question with `rf reply`, which shows in the ops log and here, never as a note.
 - **New series:** give it a name. Then import past instances one at a time, in label order: create the instance, drop its inputs on the left and what was actually sent on the right, let the agent rebuild each output and note what it can't derive, and close it.
-- **New instance:** give it a label. It starts with the items of the most recently closed instance as dashed tiles.
+- **New instance:** give it a label. It starts with the graph of the most recently closed instance, as dashed tiles.
 - **Close instance:** freezes the instance as an example. Unanswered questions take their defaults, and the dialog lists which. It is disabled while a run is going.
 - **Abandon:** the other way an instance ends. It stays as it is, but it isn't an example, never becomes a new instance's starting point, and applies no defaults. It is also disabled while a run is going. Closed and abandoned instances both show under "Show closed".
 - **Duplicate:** a closed or abandoned instance can be copied, under a new label, into an open instance. The copy has its files, screen and log, but not its agent session, and its log records the copy as `duplicate`.
@@ -75,7 +76,8 @@ Workspaces are folders on the host's disk. There is no database.
   - `rf reply TEXT` answers a person's question; the server logs it as `reply`.
   - `rf put FILE` replaces the screen with FILE. The server rejects it if its `rev` isn't current, because someone changed the screen since the agent read it; the agent then re-reads and merges. It also rejects an invalid document, listing the reasons.
   - **Valid** means:
-    - every item has a unique id, a name, and a kind of input or output;
+    - every item has a unique id, a name, and a kind of input, step or output;
+    - `from`, if present, lists ids of the instance's items, and never leads round to the item itself;
     - `file` is null, or the path of an existing file under `upload/` or `working/`, relative to the instance folder;
     - `headline` and `source`, if present, are strings;
     - a note's `files` are paths of existing files under `upload/` or `working/` of this instance or another (`../<label>/working/...`);
@@ -105,12 +107,14 @@ The schemas are loose, and unknown fields are ignored, so the agent and the UI c
          "source": "Warehouse DB, snapshot 08-23, read 08-24 09:12"},
         {"id": "loan-activity", "name": "Granite Point loan activity", "kind": "input", "file": null,
          "notes": [{"ref": "", "text": "Not in the mailbox yet; every closed instance had it."}]},
+        {"id": "eligible-ar", "name": "Eligible AR", "kind": "step",
+         "file": "working/Eligible AR 08.24.2026 v2.csv", "from": ["ar-aging"]},
         {"id": "borrowing-base", "name": "Borrowing base", "kind": "output",
-         "file": "upload/Borrowing base Larkfield 08.24.2026 reviewed.xlsx",
+         "file": "upload/Borrowing base Larkfield 08.24.2026 reviewed.xlsx", "from": ["eligible-ar", "inventory", "loan-activity"],
          "notes": [{"id": "q3", "ref": "Base!C22", "text": "Sam changed the availability block from 500,000 to 750,000.",
                     "options": ["One-off for this week", "Standing rule from now on"], "default": 0}]},
         {"id": "funding", "name": "Funding request", "kind": "output",
-         "file": "working/Funding request 08.24.2026 v2.xlsx",
+         "file": "working/Funding request 08.24.2026 v2.xlsx", "from": ["borrowing-base"],
          "headline": "Requests $1.2M, $0.3M less than last week.",
          "notes": [{"ref": "", "text": "Uses the lender's waiver for this week.", "files": ["upload/Granite Point waiver.eml"]}]}
       ]
@@ -144,7 +148,8 @@ The schemas are loose, and unknown fields are ignored, so the agent and the UI c
   - In a new instance, it builds the outputs the examples have, from this instance's inputs and, where the work rolls forward, the previous instance's outputs. It starts from the scripts of the most recently closed instance, and notes what's missing, what it assumed, and each value it carried rather than computed, with where it came from.
   - After an input changes, it rebuilds the outputs that used it, as new files, and notes what changed.
   - After a person revises an output, it compares their version with its own and rebuilds the outputs that depend on it. It asks whether the change is a one-off or a standing rule.
-  - It puts each output on the screen when it's ready, and ends every run with `rf put` and a one-line summary.
+  - It draws the graph: a handful of steps, each in a small file it writes, and each item's `from`, as its scripts actually read them.
+  - It puts each step and output on the screen when it's ready, and ends every run with `rf put` and a one-line summary.
 - **The agent makes the call.** Nothing in the system checks or scores outputs. The agent decides whether its work is right, and writes checks as scripts in `working/` when it judges it needs them.
 - **Answers carry over.** Close logs the default of every unanswered question as an answer. The next instance's agent applies the answers given after the previous instance's last run, and folds standing rules into `process.md`.
 - **Reads sources, never writes them.** People usually bring the files. When a person points the agent to a source instead, such as a database or a mailbox folder, the agent reads it, saves what it read in `working/` as the input's file with a `source`, and keeps the fetch as a script that later instances rerun. It reads the series folder, and writes only to its instance's `working/` and, through `rf`, its workspace.
@@ -195,8 +200,8 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
      - Each series has its own `.pylib` on the agent's `PYTHONPATH`: Python packages the agent installs there with `pip install --target` stay with the series, in the data volume, and survive a new image.
      - The Docker image adds poppler, sqlite3, curl, git, jq, zip and CJK fonts. Its outbound network is open, and a run can reach every series; per-series capabilities (network, packages, sources, secrets) wait for the sandbox.
 2. **M2, the page (built):** [web/index.html](web/index.html), over the same server:
-   - the panes, tiles, notes, ops log and Advanced, which reads the agent's work from the instance's Pi session file;
-   - phone layout: the panes stack, and notes open as a bottom sheet;
+   - the graph, tiles, notes, ops log and Advanced, which reads the agent's work from the instance's Pi session file;
+   - phone layout: Outputs come first, then the other tiles, each saying what it's made from instead of lines; notes open as a bottom sheet;
    - it polls every 4 seconds rather than streaming events;
    - uploads, answers, Steer, Interrupt and Close as POSTs, refused when the browser marks them cross-site, so another web page can't steer an agent;
    - file downloads: attachments with a sandboxing CSP (images inline), and only files whose real path stays inside the instance, so an agent's link can't expose the server's files;
@@ -242,7 +247,7 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
 7. **Harness:** Pi over RPC.
 8. **Mid-run drops** join the current run by steering, with the steering mode `all`.
 9. **Files only:** the main screen has no typing or prompting, and doesn't show the agent at work. Inputs and outputs are file tiles that show whether a person or the agent made them. Notes are pinned to files, people can upload on both sides, and a new series is set up by dropping past inputs and outputs.
-10. **Ops log and Advanced** are separate from the panes. Advanced shows the agent's work, can steer and interrupt, and expands over the panes rather than replacing them.
+10. **Ops log and Advanced** are separate from the graph. Advanced shows the agent's work, can steer and interrupt, and expands over the graph rather than replacing it.
 11. **Storage:**
     - `upload/` holds people's files, which nobody ever moves or changes; a repeated name gets `_2`.
     - `working/` is the agent's.
@@ -263,6 +268,8 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
 23. **A TOTP gate for an early public demo** (16 Oct): codes from an authenticator app rather than a password, since codes expire and an enrolled phone is hard to pass on. One secret per person, set up from a one-time link, so one person can be revoked. The gate is one module, `src/access.ts`, and is off until someone is invited. Microsoft sign-in through oauth2-proxy is dropped for now, since the tenant's admin would have to consent.
 24. **Workspaces** (16 Oct): the top-level folder is a workspace, such as a client's. The sidebar cascades workspace, series and instance, with each row's actions in its corner rather than as rows of their own. A workspace or a series can be archived, which hides it until it's restored; nothing in it changes, and its runs carry on.
 
+25. **The graph** (17 Oct): the screen shows the process as a graph of inputs, steps and outputs, with Outputs in their own column so they never scroll away. What each item is made from is a hint for people: nothing runs it, and the agent needn't follow it. Drops are hints too, and the page doesn't show `process.md`, which points at the agent's scripts.
+
 ## Proposed by the agent (open to change)
 
 1. People answer questions by clicking an option. If none fits, they fix the file and drop it back.
@@ -281,3 +288,4 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
 14. Close logs each unanswered question's default as an answer, and the next instance applies it.
 15. Past instances are imported one at a time, in label order.
 16. In v0, the red dot is per browser, and the log has no read events.
+17. A step is an intermediate result in a file, rather than an operation, so every tile opens in Preview and a dashed tile always means not there yet.

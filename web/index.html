@@ -11,7 +11,7 @@
 :root {
   --paper: #f6f7f8; --sheet: #ffffff; --rule: #e3e6ea; --rule-2: #cdd2d9;
   --ink: #15181d; --ink-2: #474e5b; --ink-3: #6b7280;
-  --person: #1f48c7; --person-bg: #eef2fc; --note: #d42a1e;
+  --person: #1f48c7; --person-bg: #eef2fc; --note: #d42a1e; --edge: #a3aab4;
   --r1: 4px; --r2: 8px;
   --sans: "IBM Plex Sans", "Noto Sans", sans-serif; --mono: "IBM Plex Mono", "DejaVu Sans Mono", monospace;
 }
@@ -69,25 +69,34 @@ a { color: inherit; }
 .btn:disabled { background: var(--sheet); color: var(--ink-3); border-color: var(--rule-2); cursor: default; }
 .btn.sel { background: var(--paper); box-shadow: inset 0 1px 2px rgba(0,0,0,.08); }
 
-.panes { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; overflow: auto; padding-bottom: 46px; }
-.pane { padding: 22px 28px 20px; display: flex; flex-direction: column; position: relative; overflow: clip; min-width: 0; }
+.panes { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr); position: relative; padding-bottom: 46px; }
+.pane { padding: 22px 28px 20px; display: flex; flex-direction: column; position: relative; overflow: auto; min-width: 0; }
+.flow { grid-area: 1 / 1; }
+.outs { grid-area: 1 / 2; overflow: hidden auto; border-left: 1px solid var(--rule); }
+.cols { display: flex; gap: 64px; align-items: start; }
+.col { width: 216px; flex: none; display: grid; gap: 10px; align-content: start; }
+.edges { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+.edges path { fill: none; stroke: var(--edge); stroke-width: 1.25; }
+.edges path.hot { stroke: var(--ink); stroke-width: 1.5; }
+.edges marker path { fill: var(--edge); stroke: none; }
+.edges #arrow-hot path { fill: var(--ink); }
 .pane.busy::before { content: ''; position: absolute; top: 0; left: -30%; width: 30%; height: 2px; background: var(--ink); animation: stripe 1.4s ease-in-out infinite; }
 @keyframes stripe { to { left: 100%; } }
 .pane.drag::after { content: '+ Add'; position: absolute; top: 20px; right: 28px; font-weight: 600; color: var(--person); }
 .pane.drag .ph .btn { visibility: hidden; }
-.pane + .pane { border-left: 1px solid var(--rule); }
 .pane.drag { background: var(--person-bg); }
-.ph { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+.ph { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; min-height: 26px; margin-bottom: 4px; }
 .ph h2 { margin: 0; font-size: 15px; font-weight: 600; }
 .ph .c { font-size: 13px; color: var(--ink-3); }
 .ph .btn { margin-left: auto; padding: 4px 10px; font-size: 12px; }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(158px, 100%), 1fr)); gap: 10px; }
-.tile { position: relative; background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r1); padding: 11px 12px 10px; min-height: 96px; display: flex; flex-direction: column; gap: 4px; cursor: pointer; text-align: left; }
+.tile { position: relative; z-index: 2; background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r1); padding: 11px 12px 10px; min-height: 96px; display: flex; flex-direction: column; gap: 4px; cursor: pointer; text-align: left; }
 .tile.on, .tile.drag { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
 .ext { font: 500 10px/1 var(--mono); letter-spacing: .04em; color: var(--ink-3); display: flex; justify-content: space-between; align-items: baseline; }
 .nc { font: 500 11.5px/1 var(--sans); letter-spacing: 0; color: var(--ink-3); padding-right: 10px; }
 .nc.q, .legend .tri.q { color: var(--note); border-top-color: var(--note); }
 .fn { font-size: 13px; font-weight: 500; line-height: 1.32; word-break: break-word; }
+.file { font-size: 12px; color: var(--ink-3); word-break: break-word; }
+.from { display: none; font-size: 12px; color: var(--ink-3); }
 .tile.person .fn, .tile.person .meta b { color: var(--person); }
 .meta { margin-top: auto; font-size: 12px; color: var(--ink-3); }
 .meta b { font-weight: 500; color: var(--ink); }
@@ -208,10 +217,15 @@ a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: 
   .bar h1 { font-size: 17px; }
   .state { margin-left: 0; order: 5; width: 100%; }
   .bar .btn.top { padding: 6px 9px; font-size: 12px; }
-  .panes { display: block; padding-bottom: 60px; }
-  .pane { padding: 16px 14px; }
-  .pane + .pane { border-left: 0; border-top: 1px solid var(--rule); }
-  .grid { grid-template-columns: repeat(2, 1fr); }
+  .panes { display: block; overflow: auto; padding-bottom: 60px; }
+  .pane { padding: 16px 14px; overflow: clip; }
+  .outs { border-left: 0; border-bottom: 1px solid var(--rule); }
+  .cols { display: block; }
+  .col { width: auto; grid-template-columns: repeat(2, 1fr); }
+  .col > :not(.tile) { grid-column: 1 / -1; }
+  .col + .col { margin-top: 18px; }
+  .ph:empty, .edges { display: none; }
+  .from { display: block; }
   .hint { display: none; }
   .card { left: 0 !important; right: 0; bottom: 0; top: auto !important; width: auto; max-height: 75dvh; border-radius: 12px 12px 0 0; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
   .adv { position: fixed; }
@@ -230,7 +244,11 @@ a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: 
   <aside class="side" id="side"></aside>
   <main class="main">
     <div class="bar" id="bar"></div>
-    <div class="panes" id="panes"></div>
+    <div class="panes" id="panes">
+      <section class="pane outs" id="outs" data-pane="out"></section>
+      <section class="pane flow" id="flow" data-pane="in"></section>
+      <svg class="edges" id="edges"></svg>
+    </div>
     <div class="adv" id="adv">
       <div class="ab" id="advbar"></div>
       <div class="body">
@@ -266,7 +284,7 @@ function fileUrl(path, kind = 'files') {
 }
 const ext = f => (f && f.includes('.') ? f.split('.').pop() : '').toUpperCase();
 
-let tree = [], cur = null, data = null, lines = [], linesKey = '', openItem = null, showClosed = false, showArchived = false, pv = null;
+let tree = [], cur = null, data = null, lines = [], linesKey = '', openItem = null, hover = null, showClosed = false, showArchived = false, pv = null;
 let seen = {}, prevSigs = {}, uploads = [], shown = '', refreshes = 0;
 const sig = i => `${i.file}|${i.notes?.length ?? 0}|${i.headline ?? ''}`;
 
@@ -410,35 +428,79 @@ function tile(item) {
   const count = open ? `${open} question${open > 1 ? 's' : ''}` : notes.length ? `${notes.length} note${notes.length > 1 ? 's' : ''}` : '';
   const corner = notes.length ? `<span class="corner ${open ? 'ask' : ''}"></span>` : '';
   const mark = `${seen[item.id] !== sig(item) ? 'fresh' : ''} ${prevSigs[item.id] && prevSigs[item.id] !== sig(item) ? 'flash' : ''}`;
+  const from = item.from?.length ? `<div class="from">from ${item.from.map(f => esc(data.doc.items.find(i => i.id === f).name)).join(', ')}</div>` : '';
   if (!item.file) {
-    return `<div class="tile ghost ${mark}" data-item="${esc(item.id)}">${corner}<div class="ext"><span>${esc(item.kind === 'input' ? 'INPUT' : 'OUTPUT')}</span><span class="nc ${open ? 'q' : ''}">${count}</span></div><div class="fn">${esc(item.name)}</div><div class="meta">${item.kind === 'input' ? 'Missing' : 'Not built yet'}</div></div>`;
+    return `<div class="tile ghost ${mark}" data-item="${esc(item.id)}">${corner}<div class="ext"><span>${esc(item.kind.toUpperCase())}</span><span class="nc ${open ? 'q' : ''}">${count}</span></div><div class="fn">${esc(item.name)}</div>${from}<div class="meta">${item.kind === 'input' ? 'Missing' : 'Not built yet'}</div></div>`;
   }
   const p = provenance(item.file);
   const v = data.log.filter(e => e.op === 'point' && e.item === item.id && e.file).length;
-  return `<div class="tile ${p.person ? 'person' : 'agent'} ${openItem === item.id ? 'on' : ''} ${mark}" data-item="${esc(item.id)}">${corner}<div class="ext"><span>${esc(ext(item.file))}${v > 1 ? ' · v' + v : ''}</span><span class="nc ${open ? 'q' : ''}">${count}</span></div><div class="fn">${esc(fname(item.file))}</div>${item.headline ? `<div class="hl">${esc(item.headline)}</div>` : ''}${item.source ? `<div class="src">${esc(item.source)}</div>` : ''}<div class="meta"><b>${esc(p.by)}</b> · ${hhmm(p.at)}</div></div>`;
+  return `<div class="tile ${p.person ? 'person' : 'agent'} ${openItem === item.id ? 'on' : ''} ${mark}" data-item="${esc(item.id)}">${corner}<div class="ext"><span>${esc(ext(item.file))}${v > 1 ? ' · v' + v : ''}</span><span class="nc ${open ? 'q' : ''}">${count}</span></div><div class="fn">${esc(item.name)}</div><div class="file">${esc(fname(item.file))}</div>${item.headline ? `<div class="hl">${esc(item.headline)}</div>` : ''}${item.source ? `<div class="src">${esc(item.source)}</div>` : ''}${from}<div class="meta"><b>${esc(p.by)}</b> · ${hhmm(p.at)}</div></div>`;
 }
 
 function renderPanes() {
-  if (!data) return put($('#panes'), `<div class="empty">${cur?.label ? `No instance ${esc(cur.label)}.` : cur?.series ? 'No instance yet. Make one with + by the series.' : cur ? 'No series yet. Make one with + by the workspace.' : 'No workspace yet. Make one with + by Workspaces.'}</div>`);
-  const open = data.doc.status === 'open', stored = localStorage[`seen:${instPath()}`];
-  seen = stored ? JSON.parse(stored) : {};
-  if (!stored) markSeen(data.doc.items);
-  let h = '';
-  for (const [pane, kind, title] of [['in', 'input', 'Inputs'], ['out', 'output', 'Outputs']]) {
-    const items = data.doc.items.filter(i => i.kind === kind);
-    const have = items.filter(i => i.file).length;
-    h += `<section class="pane ${pane === 'out' && data.run ? 'busy' : ''}" data-pane="${pane}"><div class="ph"><h2>${title}</h2><span class="c">${items.length ? `${have} of ${items.length}` : ''}</span>${open ? `<button class="btn" data-act="add" data-pane="${pane}">+ Add files</button>` : ''}</div>`;
-    h += `<div class="grid">${items.map(tile).join('')}${uploads.filter(u => u.pane === pane && u.path === instPath()).map(u => `<div class="tile ghost"><div class="ext"><span>UPLOADING</span></div><div class="fn">${esc(u.f.name)}</div><div class="prog"><i style="width:${u.pct}%"></i></div></div>`).join('')}</div>`;
-    if (pane === 'in') {
-      const shown = new Set(data.doc.items.map(i => i.file)), also = new Map();
-      for (const i of data.doc.items) for (const n of i.notes ?? []) for (const f of n.files ?? []) if (!shown.has(f) && !also.has(f)) also.set(f, i);
-      if (also.size) h += `<div class="also"><div class="ah">Also used</div>${[...also].map(([f, i]) => `<div><a data-act="preview" data-file="${esc(f)}">${esc(fname(f))}</a> <span class="via">· noted on <a data-act="opencard" data-item="${esc(i.id)}">${esc(i.name)}</a></span></div>`).join('')}</div>`;
-    }
-    if (open) h += `<div class="hint">${pane === 'in' ? 'Drop files to add them. The agent decides what each one is.' : 'Drop a revised output here.'}</div>`;
-    h += '</section>';
+  $('#outs').hidden = !data;
+  if (!data) {
+    put($('#flow'), `<div class="empty">${cur?.label ? `No instance ${esc(cur.label)}.` : cur?.series ? 'No instance yet. Make one with + by the series.' : cur ? 'No series yet. Make one with + by the workspace.' : 'No workspace yet. Make one with + by Workspaces.'}</div>`);
+    return drawEdges();
   }
-  put($('#panes'), h);
-  prevSigs = Object.fromEntries(data.doc.items.map(i => [i.id, sig(i)]));
+  const open = data.doc.status === 'open', stored = localStorage[`seen:${instPath()}`], items = data.doc.items;
+  seen = stored ? JSON.parse(stored) : {};
+  if (!stored) markSeen(items);
+  const byId = new Map(items.map(i => [i.id, i])), depth = new Map();
+  const d = i => {
+    if (!depth.has(i.id)) depth.set(i.id, 1 + Math.max(0, ...(i.from ?? []).map(f => byId.get(f)).filter(p => p.kind === 'step').map(d)));
+    return depth.get(i.id);
+  };
+  const cols = [items.filter(i => i.kind === 'input')], steps = items.filter(i => i.kind === 'step'), outs = items.filter(i => i.kind === 'output');
+  for (const i of steps) (cols[d(i)] ??= []).push(i);
+  const head = (title, list, pane) => `<div class="ph"><h2>${title}</h2><span class="c">${list.length ? `${list.filter(i => i.file).length} of ${list.length}` : ''}</span>${open && pane ? `<button class="btn" data-act="add" data-pane="${pane}">+ Add files</button>` : ''}</div>`;
+  const adding = pane => uploads.filter(u => u.pane === pane && u.path === instPath()).map(u => `<div class="tile ghost"><div class="ext"><span>UPLOADING</span></div><div class="fn">${esc(u.f.name)}</div><div class="prog"><i style="width:${u.pct}%"></i></div></div>`).join('');
+  const shown = new Set(items.map(i => i.file)), also = new Map();
+  for (const i of items) for (const n of i.notes ?? []) for (const f of n.files ?? []) if (!shown.has(f) && !also.has(f)) also.set(f, i);
+  const alsoUsed = also.size ? `<div class="also"><div class="ah">Also used</div>${[...also].map(([f, i]) => `<div><a data-act="preview" data-file="${esc(f)}">${esc(fname(f))}</a> <span class="via">· noted on <a data-act="opencard" data-item="${esc(i.id)}">${esc(i.name)}</a></span></div>`).join('')}</div>` : '';
+  put($('#flow'), `<div class="cols">${cols.map((col, k) => `<div class="col">${k === 0 ? head('Inputs', col, 'in') : k === 1 ? head('Steps', steps) : '<div class="ph"></div>'}${col.map(tile).join('')}${k === 0 ? adding('in') + alsoUsed : ''}</div>`).join('')}</div>`
+    + (open ? '<div class="hint">Drop files to add them. The agent decides what each one is.</div>' : ''));
+  put($('#outs'), `<div class="col">${head('Outputs', outs, 'out')}${outs.map(tile).join('')}${adding('out')}</div>${open ? '<div class="hint">Drop a revised output here.</div>' : ''}`);
+  $('#outs').classList.toggle('busy', !!data.run);
+  prevSigs = Object.fromEntries(items.map(i => [i.id, sig(i)]));
+  drawEdges();
+}
+
+function drawEdges() {
+  if (!data || innerWidth <= 800) return void ($('#edges').innerHTML = '');
+  const box = $('#panes').getBoundingClientRect(), items = data.doc.items, hot = hover ?? openItem, up = new Set(), down = new Set();
+  const climb = id => { for (const f of items.find(i => i.id === id)?.from ?? []) if (!up.has(f)) { up.add(f); climb(f); } };
+  const fall = id => { for (const i of items) if (i.from?.includes(id) && !down.has(i.id)) { down.add(i.id); fall(i.id); } };
+  if (hot) { climb(hot); fall(hot); }
+  const rects = new Map(items.map(i => [i.id, document.querySelector(`#panes .tile[data-item="${CSS.escape(i.id)}"]`).getBoundingClientRect()]));
+  const mid = id => rects.get(id).top + rects.get(id).height / 2, byY = ids => ids.sort((p, q) => mid(p) - mid(q));
+  const parents = new Map(items.map(i => [i.id, byY([...i.from ?? []])])), children = new Map(items.map(i => [i.id, byY(items.filter(c => c.from?.includes(i.id)).map(c => c.id))]));
+  const port = (id, ends, other) => rects.get(id).top + rects.get(id).height * (ends.get(id).indexOf(other) + 1) / (ends.get(id).length + 1);
+  const cols = [...document.querySelectorAll('#flow .col')].map(c => [...c.querySelectorAll('.tile')].map(t => t.getBoundingClientRect())).filter(ts => ts.length);
+  let h = '';
+  for (const i of items) for (const f of i.from ?? []) {
+    const a = rects.get(f), b = rects.get(i.id), y1 = port(f, children, i.id), y2 = port(i.id, parents, f), lit = i.id === hot || up.has(i.id) || f === hot || down.has(f);
+    let d;
+    if (b.left > a.right) {
+      // Cross each column in between at its nearest gap, so a line never seems to enter a tile it passes.
+      const pts = [[a.right, y1]];
+      for (const ts of cols.filter(ts => ts[0].left > a.right && ts[0].right < b.left)) {
+        const y = pts.at(-1)[1], gaps = [ts[0].top - 14, ...ts.slice(1).map((t, k) => (ts[k].bottom + t.top) / 2), ts.at(-1).bottom + 14];
+        const g = gaps.reduce((best, v) => (Math.abs(v - y) < Math.abs(best - y) ? v : best));
+        pts.push([ts[0].left, g], [ts[0].right, g]);
+      }
+      pts.push([b.left, y2]);
+      d = `M${pts[0][0] - box.left},${pts[0][1] - box.top}` + pts.slice(1).map(([x, y], k) => {
+        const [px, py] = pts[k], mx = (px + x) / 2 - box.left;
+        return k % 2 ? ` L${x - box.left},${y - box.top}` : ` C${mx},${py - box.top} ${mx},${y - box.top} ${x - box.left},${y - box.top}`;
+      }).join('');
+    } else {
+      const x1 = a.right - box.left, x2 = b.right - box.left, c = Math.max(x1, x2) + 36;
+      d = `M${x1},${y1 - box.top} C${c},${y1 - box.top} ${c},${y2 - box.top} ${x2},${y2 - box.top}`;
+    }
+    h += `<path class="${lit ? 'hot' : ''}" d="${d}" marker-end="url(#${lit ? 'arrow-hot' : 'arrow'})"/>`;
+  }
+  $('#edges').innerHTML = `<defs>${['arrow', 'arrow-hot'].map(id => `<marker id="${id}" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 8,4 0,8z"/></marker>`).join('')}</defs>${h}`;
 }
 
 const logLine = e => `<div class="e"><span class="tm">${hhmm(e.at)}</span><div>${logText(e)}</div></div>`;
@@ -452,7 +514,7 @@ function logText(e) {
     create: () => `${w} opened the instance${e.from ? `<div class="d">Items carried over from ${esc(e.from)}.${e.fetch ? ' The agent starts fetching its inputs.' : ''}</div>` : ''}`,
     upload: () => `${w} uploaded ${e.pane === 'out' ? 'an output' : 'an input'}${e.onto ? ' onto ' + item(e.onto) : ''}${f}`,
     point: () => `${w} ${e.file ? 'showed' : 'cleared'} ${item(e.item)}${e.was ? `<div class="d">Replacing ${esc(fname(e.was))}</div>` : ''}${f}`,
-    item: () => `${w} set up ${esc(e.name)}${e.headline ? `<div class="d">${esc(e.headline)}</div>` : ''}${e.source ? `<div class="d">Source: ${esc(e.source)}</div>` : ''}`,
+    item: () => `${w} set up ${esc(e.name)}${e.from?.length ? `<div class="d">From ${e.from.map(item).join(', ')}</div>` : ''}${e.headline ? `<div class="d">${esc(e.headline)}</div>` : ''}${e.source ? `<div class="d">Source: ${esc(e.source)}</div>` : ''}`,
     note: () => `${w} noted on ${item(e.item)}<div class="d">${e.note.options ? 'Asked: ' : ''}${esc(e.note.text)}</div>`,
     unnote: () => `${w} removed a note on ${item(e.item)}`,
     remove: () => `${w} removed ${esc(e.item)} from the screen`,
@@ -561,7 +623,7 @@ function renderCard() {
   if (item.file) {
     const p = provenance(item.file);
     h += `<div class="cp"><b class="${p.person ? 'p' : ''}">${esc(p.by)}</b> ${p.person ? 'uploaded' : 'made'} it at ${hhmm(p.at)} · ${esc(item.name)}${item.source ? `<br>${esc(item.source)}` : ''}</div>`;
-  } else h += `<div class="cp">${item.kind === 'input' ? 'Expected input, not there yet' : 'Output not built yet'}</div>`;
+  } else h += `<div class="cp">${item.kind === 'input' ? 'Expected input, not there yet' : `${item.kind === 'step' ? 'Step' : 'Output'} not built yet`}</div>`;
   for (const n of item.notes ?? []) {
     h += `<div class="nb">${n.ref ? `<span class="ref">${esc(n.ref)}</span>` : ''}${esc(n.text)}`;
     if (n.files?.length) h += `<div class="cites">${n.files.map(f => `<a data-act="preview" data-file="${esc(f)}">${esc(fname(f))}</a>`).join('')}</div>`;
@@ -828,18 +890,24 @@ for (const type of ['dragover', 'dragleave', 'drop']) {
 }
 addEventListener('dragover', e => { if (!e.defaultPrevented) { e.preventDefault(); e.dataTransfer.dropEffect = 'none'; } });
 addEventListener('drop', e => e.preventDefault());
-$('#panes').addEventListener('scroll', placeCard);
+$('#panes').addEventListener('scroll', () => { placeCard(); drawEdges(); }, true);
+$('#panes').addEventListener('mouseover', e => {
+  const id = e.target.closest('.tile')?.dataset.item ?? null;
+  if (id !== hover) { hover = id; drawEdges(); }
+});
+$('#panes').addEventListener('mouseleave', () => { hover = null; drawEdges(); });
+new ResizeObserver(() => { placeCard(); drawEdges(); }).observe($('#panes'));
+document.fonts.ready.then(drawEdges);
 
 addEventListener('hashchange', () => {
   openItem = null; pv = null; folds.clear(); prevSigs = {};
   $('#steer').value = '';
-  $('#panes').scrollTop = $('#log').scrollTop = 0;
+  $('#panes').scrollTop = $('#flow').scrollTop = $('#flow').scrollLeft = $('#outs').scrollTop = $('#log').scrollTop = 0;
   $('#trace').scrollTop = $('#trace').scrollHeight;
   renderPv();
   $('#side').classList.remove('open');
   refresh();
 });
-addEventListener('resize', placeCard);
 addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   if (pv) { pv = null; renderPv(); }

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { basename, dirname, extname, join, normalize, relative } from 'node:path';
 
 export type Note = { id?: string; ref?: string; text: string; files?: string[]; options?: string[]; default?: number };
-export type Item = { id: string; name: string; kind: 'input' | 'output'; file: string | null; headline?: string; source?: string; notes?: Note[] };
+export type Item = { id: string; name: string; kind: 'input' | 'step' | 'output'; file: string | null; from?: string[]; headline?: string; source?: string; notes?: Note[] };
 export type Doc = { rev: number; status: 'open' | 'closed' | 'abandoned'; summary?: string; items: Item[] };
 export type Entry = { seq: number; at: string; by: string; op: string; [k: string]: unknown };
 
@@ -49,7 +49,7 @@ export function createInstance(seriesDir: string, label: string, by: string): In
   mkdirSync(join(dir, 'upload'), { recursive: true });
   mkdirSync(join(dir, 'working'));
   const inst = instance(dir);
-  inst.doc.items = (from?.doc.items ?? []).map(({ id, name, kind }) => ({ id, name, kind, file: null, notes: [] }));
+  inst.doc.items = (from?.doc.items ?? []).map(({ id, name, kind, from }) => ({ id, name, kind, file: null, from, notes: [] }));
   inst.save();
   const fetch = from?.doc.items.some(i => i.kind === 'input' && i.file?.startsWith('working/'));
   inst.append(by, 'create', { from: from ? basename(from.dir) : null, ...(fetch && { fetch }) });
@@ -159,7 +159,8 @@ export class Instance {
       if (typeof i.id !== 'string' || !i.id || ids.has(i.id)) errors.push(`item id missing or repeated: ${JSON.stringify(i.id)}`);
       ids.add(i.id);
       if (typeof i.name !== 'string' || !i.name) errors.push(`${i.id}: name missing`);
-      if (i.kind !== 'input' && i.kind !== 'output') errors.push(`${i.id}: kind must be "input" or "output"`);
+      if (!['input', 'step', 'output'].includes(i.kind)) errors.push(`${i.id}: kind must be "input", "step" or "output"`);
+      if (i.from !== undefined && !Array.isArray(i.from)) errors.push(`${i.id}: from must be a list of item ids`);
       for (const k of ['headline', 'source'] as const) if (i[k] !== undefined && typeof i[k] !== 'string') errors.push(`${i.id}: ${k} must be a string`);
       if (i.file !== null) {
         const ok = typeof i.file === 'string' && normalize(i.file) === i.file && /^(upload|working)\/./.test(i.file) && !i.file.split('/').includes('..');
@@ -180,6 +181,13 @@ export class Instance {
         }
       }
     }
+    const from = new Map(doc.items.map(i => [i.id, Array.isArray(i.from) ? i.from : []]));
+    for (const [id, fs] of from) for (const f of fs) if (!from.has(f)) errors.push(`${id}: from names no item ${JSON.stringify(f)}`);
+    for (let peeled = true; peeled;) {
+      peeled = false;
+      for (const [id, fs] of from) if (!fs.some(f => from.has(f))) peeled = from.delete(id);
+    }
+    if (from.size) errors.push(`from goes round in a circle among ${[...from.keys()].join(', ')}`);
     if (errors.length) throw new HttpError(400, errors.join('\n'));
 
     const shown = new Set(this.log.filter(e => e.op === 'point').map(e => e.file));
@@ -192,8 +200,8 @@ export class Instance {
         if (i.file.startsWith('working/')) chmodSync(path, 0o444);
         this.append('agent', 'point', { item: i.id, file: i.file, was: o?.file ?? null, sha256 });
       } else if (i.file === null && o?.file) this.append('agent', 'point', { item: i.id, file: null, was: o.file });
-      if (!o || o.name !== i.name || o.kind !== i.kind || o.headline !== i.headline || o.source !== i.source)
-        this.append('agent', 'item', { item: i.id, name: i.name, kind: i.kind, headline: i.headline, source: i.source });
+      if (!o || o.name !== i.name || o.kind !== i.kind || JSON.stringify(o.from) !== JSON.stringify(i.from) || o.headline !== i.headline || o.source !== i.source)
+        this.append('agent', 'item', { item: i.id, name: i.name, kind: i.kind, from: i.from, headline: i.headline, source: i.source });
       const before = new Set((o?.notes ?? []).map(n => JSON.stringify(n)));
       const after = new Set((i.notes ?? []).map(n => JSON.stringify(n)));
       for (const n of after) if (!before.has(n)) this.append('agent', 'note', { item: i.id, note: JSON.parse(n) });

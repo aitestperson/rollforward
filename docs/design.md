@@ -18,9 +18,10 @@ Sources: [Layr design reference](https://layr.design/reference/layr-001-intentio
 - **Surfaces:** tiles have a 1px border and no shadow. Only floating things are raised: question cards, and Advanced when expanded. A card points at its tile, like an Excel comment. There are two radii: 4px for tiles and buttons, and 8px for cards.
 - **The awkward states are drawn:**
   - a missing input, with how often closed instances had it;
-  - an output not built yet;
+  - a step or output not built yet;
   - a run in progress, with Close disabled until it ends;
   - what each question defaults to if it's still unanswered at close.
+- **The graph:** tiles in columns, inputs to steps, with Outputs in a column of their own that never scrolls away. Lines are thin gray curves behind the tiles, entering each tile at its own point and crossing a column only between tiles; hovering a tile turns its lineage black. Columns come from the longest path of steps; there is no layout library.
 - **The sidebar is a cascade:** workspace, series, instance, each level indented under a rule. A row's actions sit in its corner, ⋯ for settings and + for a new child, so the list holds only things and never grows a row of buttons.
 - **Copy** names objects and consequences. There is no helper text that repeats a label. A legend in the sidebar teaches the colour code once.
 - **Light throughout.** A dark Advanced band looked like leftover developer scaffolding.
@@ -36,7 +37,7 @@ Sources: [Layr design reference](https://layr.design/reference/layr-001-intentio
 
     paper #f6f7f8   sheet #ffffff   rule #e3e6ea   rule-2 #cdd2d9
     ink #15181d     ink-2 #474e5b   ink-3 #6b7280
-    person #1f48c7  person-bg #eef2fc   note #d42a1e
+    person #1f48c7  person-bg #eef2fc   note #d42a1e   edge #a3aab4
     radius 4px (tiles, buttons), 8px (cards)
 
 ## Outside critique
