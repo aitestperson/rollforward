@@ -13,7 +13,7 @@ Recurring tasks, files in and files out. People drop this period's input files i
 | A tile's notes | Preview, compared with the file it replaced |
 |---|---|
 | ![Notes](docs/screenshots/notes.png) | ![Preview](docs/screenshots/preview.png) |
-| **Advanced: the agent's steps** | **Phone** |
+| **Advanced: the agent's work** | **Phone** |
 | ![Advanced](docs/screenshots/advanced.png) | ![Phone](docs/screenshots/phone.png) |
 
 ## Try it

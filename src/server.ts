@@ -162,10 +162,10 @@ function tree() {
   }));
 }
 
-function steps(inst: Instance) {
+function trace(inst: Instance) {
   const dir = join(inst.dir, 'session');
-  type Step = { kind: string; text: string; at?: string; result?: string; lines?: number; error?: boolean };
-  const out: Step[] = [], calls = new Map<string, Step>();
+  type Line = { kind: string; text: string; at?: string; result?: string; lines?: number; error?: boolean };
+  const out: Line[] = [], calls = new Map<string, Line>();
   for (const f of existsSync(dir) ? readdirSync(dir).filter(f => f.endsWith('.jsonl')).sort() : []) {
     for (const line of readFileSync(join(dir, f), 'utf8').split('\n').filter(Boolean)) {
       const e = JSON.parse(line);
@@ -268,7 +268,7 @@ async function people(req: IncomingMessage, res: ServerResponse, url: URL) {
   const a = active.get(seriesDir);
   const mine = a?.inst === inst ? a : undefined;
   if (!action) return send(res, 200, { doc: inst.doc, log: inst.log, run: mine ? { n: mine.n, cost: +mine.cost.toFixed(4) } : null, queued: queued(inst) });
-  if (action === 'steps') return send(res, 200, steps(inst));
+  if (action === 'trace') return send(res, 200, trace(inst));
   if (req.method !== 'POST') throw new HttpError(405, 'POST only');
   if (action === 'duplicate') {
     if (inst.doc.status === 'open') throw new HttpError(409, 'only a closed or abandoned instance can be duplicated');

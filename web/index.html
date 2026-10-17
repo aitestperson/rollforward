@@ -266,7 +266,7 @@ function fileUrl(path, kind = 'files') {
 }
 const ext = f => (f && f.includes('.') ? f.split('.').pop() : '').toUpperCase();
 
-let tree = [], cur = null, data = null, steps = [], stepsKey = '', openItem = null, showClosed = false, showArchived = false, pv = null;
+let tree = [], cur = null, data = null, lines = [], linesKey = '', openItem = null, showClosed = false, showArchived = false, pv = null;
 let seen = {}, prevSigs = {}, uploads = [], shown = '', refreshes = 0;
 const sig = i => `${i.file}|${i.notes?.length ?? 0}|${i.headline ?? ''}`;
 
@@ -314,11 +314,11 @@ async function refresh() {
   const i = label ? s?.instances.find(i => i.label === label) : s?.instances.find(i => i.status === 'open') ?? s?.instances.at(-1);
   const next = w && { workspace: w.workspace, series: s?.series, label: s && (label ?? i?.label) };
   const path = i ? `${seriesPath(next)}/${enc(i.label)}` : '', d = path ? await api(path) : null;
-  const key = `${path}:${d?.log.length}`, st = ui.adv && d && (d.run || key !== stepsKey) ? await api(path + '/steps') : null;
+  const key = `${path}:${d?.log.length}`, st = ui.adv && d && (d.run || key !== linesKey) ? await api(path + '/trace') : null;
   if (n !== refreshes) return;
   const was = data && path === shown ? lastDone()?.seq ?? 0 : undefined;
   [tree, cur, data, shown] = [t, next, d, path];
-  if (st) [steps, stepsKey] = [st, key];
+  if (st) [lines, linesKey] = [st, key];
   const done = data && lastDone();
   if (done && was !== undefined && done.seq > was) toast(done.error ? `Run ${done.run} failed: ${done.error}` : `Run ${done.run} finished${done.summary ? ': ' + done.summary : ''}`, done.error ? '' : 'ok');
   if (data) localStorage[`rev:${path}`] = data.doc.rev;
@@ -484,7 +484,7 @@ function renderAdv() {
   const d = lastDone();
   const cost = data.log.reduce((t, e) => t + (e.cost ?? 0), 0) + (data.run?.cost ?? 0);
   const s = (data.run ? `Run ${data.run.n} running` : d ? `Run ${d.run} ${d.error ? 'failed' : 'finished'} ${hhmm(d.at)}${d.error ?? d.summary ? ' · ' + (d.error ?? d.summary) : ''}` : 'No runs yet') + (cost ? ` · ${usd(cost)} so far` : '');
-  $('#advbar').innerHTML = `<span class="t">Advanced</span><span class="s">${esc(s)}</span><span class="r">${ui.adv ? 'Hide steps' : 'Show steps'}</span>`;
+  $('#advbar').innerHTML = `<span class="t">Advanced</span><span class="s">${esc(s)}</span><span class="r">${ui.adv ? 'Hide runs' : 'Show runs'}</span>`;
   if (!ui.adv) return;
   const trace = $('#trace'), atEnd = trace.scrollTop + trace.clientHeight >= trace.scrollHeight - 30;
   put(trace, traceHtml());
@@ -509,7 +509,7 @@ function md(text) {
 }
 const fold = (key, dflt, head, body) => `<details data-key="${key}" ${folds.get(key) ?? dflt ? 'open' : ''}><summary>${head}</summary>${body}</details>`;
 
-function stepHtml(s, i) {
+function lineHtml(s, i) {
   const res = s.result === undefined ? (data.run ? '<span class="spin"></span>' : 'no result')
     : s.error ? `<span class="bad">${esc(firstLine(s.result) || 'failed')}</span>`
     : s.kind === 'read' ? `${s.lines} lines`
@@ -520,18 +520,18 @@ function stepHtml(s, i) {
 }
 
 function groupHtml(g, live) {
-  if (g.length === 1) return stepHtml(...g[0]);
+  if (g.length === 1) return lineHtml(...g[0]);
   const counts = Object.entries(Object.groupBy(g, ([s]) => s.kind)).map(([k, xs]) => `${esc(VERB[k] ?? k).toLowerCase()} ${xs.length} ${NOUN[k] ?? 'call'}${xs.length > 1 ? 's' : ''}`).join(', ');
   const bad = g.filter(([s]) => s.error).length;
   const head = counts[0].toUpperCase() + counts.slice(1) + (bad ? ` · <span class="bad">${bad} failed</span>` : '') + (live ? ' <span class="spin"></span>' : '');
-  return fold(`g${g[0][1]}`, live, head, g.map(x => stepHtml(...x)).join(''));
+  return fold(`g${g[0][1]}`, live, head, g.map(x => lineHtml(...x)).join(''));
 }
 
 function traceHtml() {
   let h = '', g = [], run = 0, ri = 0;
   const replies = data.log.filter(e => e.op === 'reply');
   const flush = live => { if (g.length) h += groupHtml(g, live); g = []; };
-  steps.forEach((s, i) => {
+  lines.forEach((s, i) => {
     const reply = s.kind === 'bash' && /\brf reply\b/.test(s.text);
     if (s.kind !== 'user' && s.kind !== 'say' && !reply) return void g.push([s, i]);
     flush(false);
@@ -549,7 +549,7 @@ function traceHtml() {
     }
   });
   flush(!!data.run);
-  return h || '<div class="rh">No steps yet.</div>';
+  return h || '<div class="rh">No runs yet.</div>';
 }
 
 function renderCard() {
@@ -696,7 +696,7 @@ document.addEventListener('click', async ev => {
     if (!ev.target.closest('#card, #pv')) { openItem = null; renderCard(); renderPanes(); }
     return;
   }
-  if (el.id === 'advbar') { ui.adv = !ui.adv; if (ui.adv) steps = await api(instPath() + '/steps'); return renderAdv(); }
+  if (el.id === 'advbar') { ui.adv = !ui.adv; if (ui.adv) lines = await api(instPath() + '/trace'); return renderAdv(); }
   if (el.classList.contains('tile')) {
     openItem = openItem === el.dataset.item ? null : el.dataset.item;
     markSeen(data.doc.items.filter(i => i.id === openItem));

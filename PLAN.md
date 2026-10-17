@@ -36,7 +36,7 @@
 - **Ops log:** a side panel listing who did what, when: uploads, runs, every change the screen showed, answers, steers, the agent's replies and the close. Earlier files open from here.
 - **Preview** shows a spreadsheet with its noted cells marked. If the file replaced an earlier one, "Compare with previous" highlights the cells that changed, and a click shows the old value.
 - **Advanced:** a bar along the bottom that expands over the panes, like VS Code's terminal panel.
-  - It shows every step the agent takes, like Claude Code: each run starts with what triggered it, plus its time and cost. The agent's messages read as text, and each tool call is one line with a short result. Consecutive calls fold into a summary such as "Read 3 files, ran 2 commands". Each call expands to its full output, and failures are red. During a run it is live. Past runs are read from the instance's Pi session file.
+  - It shows what the agent does, like Claude Code: each run starts with what triggered it, plus its time and cost. The agent's messages read as text, and each tool call is one line with a short result. Consecutive calls fold into a summary such as "Read 3 files, ran 2 commands". Each call expands to its full output, and failures are red. During a run it is live. Past runs are read from the instance's Pi session file.
   - It is the only place to type. **Steer** sends the agent a message, and starts a run if none is going. **Interrupt** stops the run. The agent answers a question with `rf reply`, which shows in the ops log and here, never as a note.
 - **New series:** give it a name. Then import past instances one at a time, in label order: create the instance, drop its inputs on the left and what was actually sent on the right, let the agent rebuild each output and note what it can't derive, and close it.
 - **New instance:** give it a label. It starts with the items of the most recently closed instance as dashed tiles.
@@ -195,7 +195,7 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
      - Each series has its own `.pylib` on the agent's `PYTHONPATH`: Python packages the agent installs there with `pip install --target` stay with the series, in the data volume, and survive a new image.
      - The Docker image adds poppler, sqlite3, curl, git, jq, zip and CJK fonts. Its outbound network is open, and a run can reach every series; per-series capabilities (network, packages, sources, secrets) wait for the sandbox.
 2. **M2, the page (built):** [web/index.html](web/index.html), over the same server:
-   - the panes, tiles, notes, ops log and Advanced, which reads the steps from the instance's Pi session file;
+   - the panes, tiles, notes, ops log and Advanced, which reads the agent's work from the instance's Pi session file;
    - phone layout: the panes stack, and notes open as a bottom sheet;
    - it polls every 4 seconds rather than streaming events;
    - uploads, answers, Steer, Interrupt and Close as POSTs, refused when the browser marks them cross-site, so another web page can't steer an agent;
@@ -241,8 +241,8 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
 6. **Model access:** through OpenRouter.
 7. **Harness:** Pi over RPC.
 8. **Mid-run drops** join the current run by steering, with the steering mode `all`.
-9. **Files only:** the main screen has no typing or prompting, and shows no steps. Inputs and outputs are file tiles that show whether a person or the agent made them. Notes are pinned to files, people can upload on both sides, and a new series is set up by dropping past inputs and outputs.
-10. **Ops log and Advanced** are separate from the panes. Advanced shows the agent's internal steps, can steer and interrupt, and expands over the panes rather than replacing them.
+9. **Files only:** the main screen has no typing or prompting, and doesn't show the agent at work. Inputs and outputs are file tiles that show whether a person or the agent made them. Notes are pinned to files, people can upload on both sides, and a new series is set up by dropping past inputs and outputs.
+10. **Ops log and Advanced** are separate from the panes. Advanced shows the agent's work, can steer and interrupt, and expands over the panes rather than replacing them.
 11. **Storage:**
     - `upload/` holds people's files, which nobody ever moves or changes; a repeated name gets `_2`.
     - `working/` is the agent's.
