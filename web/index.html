@@ -94,7 +94,6 @@ a { color: inherit; }
 .corner { position: absolute; top: -1px; right: -1px; width: 0; height: 0; border-top: 12px solid var(--ink-3); border-left: 12px solid transparent; border-top-right-radius: var(--r1); }
 .tile.ghost { background: transparent; border: 1px dashed var(--rule-2); }
 .tile.ghost .fn { color: var(--ink-2); font-weight: 400; }
-.tile.drag::after { content: '\27F3  Replace'; position: absolute; inset: 0; display: grid; place-items: center; background: rgba(255,255,255,.88); font-weight: 600; }
 .tile.fresh::before { content: ''; position: absolute; top: 9px; left: -4px; width: 7px; height: 7px; border-radius: 50%; background: var(--ink); }
 .tile.flash { animation: flash 1.4s ease-out; }
 @keyframes flash { from { box-shadow: 0 0 0 4px var(--rule-2); } }
@@ -435,7 +434,7 @@ function renderPanes() {
       for (const i of data.doc.items) for (const n of i.notes ?? []) for (const f of n.files ?? []) if (!shown.has(f) && !also.has(f)) also.set(f, i);
       if (also.size) h += `<div class="also"><div class="ah">Also used</div>${[...also].map(([f, i]) => `<div><a data-act="preview" data-file="${esc(f)}">${esc(fname(f))}</a> <span class="via">· noted on <a data-act="opencard" data-item="${esc(i.id)}">${esc(i.name)}</a></span></div>`).join('')}</div>`;
     }
-    if (open) h += `<div class="hint">${pane === 'in' ? 'Drop files to add them. Drop onto a file to replace it.' : 'Drop a revised output onto its file.'}</div>`;
+    if (open) h += `<div class="hint">${pane === 'in' ? 'Drop files to add them. The agent decides what each one is.' : 'Drop a revised output here.'}</div>`;
     h += '</section>';
   }
   put($('#panes'), h);
@@ -576,7 +575,7 @@ function renderCard() {
   }
   h += '<div class="acts">';
   if (item.file) h += `<button class="btn" data-act="preview" data-file="${esc(item.file)}" data-item="${esc(item.id)}">Preview</button><a class="btn" href="${fileUrl(item.file)}">Download</a>`;
-  if (open) h += `<button class="btn" data-act="replace" data-item="${esc(item.id)}" data-pane="${item.kind === 'input' ? 'in' : 'out'}">${item.file ? 'Replace…' : 'Upload…'}</button>`;
+  if (open) h += `<button class="btn" data-act="add" data-item="${esc(item.id)}" data-pane="${item.kind === 'output' ? 'out' : 'in'}">Upload…</button>`;
   h += `<button class="btn" data-act="uncard" style="margin-left:auto">Close</button></div>`;
   put(card, h);
   card.hidden = false;
@@ -769,11 +768,11 @@ document.addEventListener('click', async ev => {
   if (act === 'cellnote') $('#pvn').textContent = el.dataset.note;
   if (act === 'toggle-closed') { showClosed = !showClosed; renderSide(); }
   if (act === 'toggle-archived') { showArchived = !showArchived; renderSide(); }
-  if (act === 'add' || act === 'replace') {
+  if (act === 'add') {
     const p = $('#picker');
     p.dataset.pane = el.dataset.pane;
-    p.dataset.onto = act === 'replace' ? el.dataset.item : '';
-    p.multiple = act === 'add';
+    p.dataset.onto = el.dataset.item ?? '';
+    p.multiple = !el.dataset.item;
     p.value = '';
     p.click();
   }

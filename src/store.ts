@@ -107,8 +107,6 @@ export class Instance {
 
   upload(by: string, name: string, tmp: string, sha256: string, pane: 'in' | 'out', onto: string | null) {
     if (this.doc.status !== 'open' || !existsSync(join(this.dir, 'workspace.json'))) throw new HttpError(409, 'the instance was closed or moved during the upload');
-    const target = onto ? this.doc.items.find(i => i.id === onto) : null;
-    if (onto && !target) throw new HttpError(400, `no item ${onto}`);
     const clean = safeName(name), ext = extname(clean), stem = clean.slice(0, clean.length - ext.length);
     mkdirSync(join(this.dir, 'upload'), { recursive: true });
     let file = `upload/${clean}`;
@@ -116,16 +114,10 @@ export class Instance {
     renameSync(tmp, join(this.dir, file));
     chmodSync(join(this.dir, file), 0o444);
     const up = this.append(by, 'upload', { file, pane, onto, sha256 });
-    if (target) {
-      this.append('server', 'point', { item: target.id, file, was: target.file });
-      target.file = file;
-    } else {
-      let id = `u${up.seq}`;
-      for (let n = 2; this.doc.items.some(i => i.id === id); n++) id = `u${up.seq}_${n}`;
-      const item: Item = { id, name: stem, kind: pane === 'in' ? 'input' : 'output', file, notes: [] };
-      this.doc.items.push(item);
-      this.append('server', 'point', { item: item.id, file });
-    }
+    let id = `u${up.seq}`;
+    for (let n = 2; this.doc.items.some(i => i.id === id); n++) id = `u${up.seq}_${n}`;
+    this.doc.items.push({ id, name: stem, kind: pane === 'in' ? 'input' : 'output', file, notes: [] });
+    this.append('server', 'point', { item: id, file });
     this.save();
   }
 

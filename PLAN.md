@@ -29,7 +29,7 @@
   - The agent can add inputs of its own, such as a table it extracted from an emailed PDF. Their files live in `working/`, so they show as agent-made.
   - An output's tile shows the agent's one-line headline. An input the agent fetched shows its source. Under the input tiles, "Also used" lists the files that notes cite and no tile shows.
   - A corner marks a tile with agent notes: gray for a note, which is for information, and red for a question waiting for a person. Hover shows them, with where in the file they apply. A question shows its options as buttons, and says which applies if it's still unanswered at close; clicking one answers it.
-  - Dropping onto a tile replaces that item's file; dropping onto the pane adds an item. The server places the file that way at once, even mid-run, and the agent then decides. For example, it can treat a pane drop as a replacement; it says so in a note.
+  - A drop is a hint. The server adds each dropped file as a new item at once, even mid-run: an output if it was dropped on Outputs, otherwise an input, and the log records the tile it was dropped on, if any. The agent then decides what it is, such as a replacement for an input's file, and says so in a note.
   - There is no text box. People drop files, click answers and close the instance.
 - **State hints:** a spinner marks the running instance in the sidebar and the top bar, with a stripe along Outputs; ⧗ marks one waiting to run. A tile flashes when it changes and keeps a black dot until opened. An unanswered question's corner pulses, and an answer shows a spinner until the agent has read it. Uploads show progress, a finished run and an error each show a toast, the tab title counts open questions, Esc closes the top layer, and abandoned instances are struck through.
 - **Ops log:** a side panel listing who did what, when: uploads, runs, every change the screen showed, answers, steers, the agent's replies and the close. Earlier files open from here.
@@ -65,7 +65,7 @@ Workspaces are folders on the host's disk. There is no database.
 - **The server holds each instance's screen and log.** They needn't be files, but who owns what stays the same. The server saves the screen to `workspace.json` (a temporary file renamed into place, read-only) and appends each event to `log.jsonl`. Closed instances therefore stay plain folders.
 - **Who writes what:**
   - People upload, answer, steer, interrupt and close, all through the server.
-  - The server places each upload at once, creates and closes instances, and is the only writer of the log.
+  - The server adds each upload as an item at once, creates and closes instances, and is the only writer of the log.
   - The agent decides the items and the notes. It changes them only through `rf`, and reads `log.jsonl` directly.
 - **`upload/` belongs to people.** Nobody moves, renames or changes these files. Each streams, as it arrives, to a temporary file in the data root's `.tmp/`, which the server empties when it starts; it is then renamed into place and made read-only. An upload may take up to an hour, and is refused if its instance closed or moved meanwhile. A repeated name becomes `<stem>_<n><ext>`, with the lowest free n. Names and labels have `/`, `\` and control characters replaced, and may not start with `.`.
 - **`working/` belongs to the agent,** which may do anything there with one limit. A file the screen has shown never changes again: the server makes it read-only and logs its hash, so a new version gets a new name.
@@ -265,7 +265,7 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
 ## Proposed by the agent (open to change)
 
 1. People answer questions by clicking an option. If none fits, they fix the file and drop it back.
-2. Dropping onto a tile replaces that item's file, and dropping onto the pane adds an item. The server places it at once, and the agent decides.
+2. A drop is a hint: the server adds each upload as a new item at once, and the agent decides what it is.
 3. If an item points at a person's upload, the agent repoints it to its own file only by asking first.
 4. A person's revision starts a run that rebuilds the outputs that depend on it.
 5. Notes stay out of the deliverable.

@@ -86,7 +86,7 @@ test('a new instance starts from the last closed one; a new series can be made',
   assert.ok(await shown(monthly));
 });
 
-test('an upload lands read-only, becomes an item, and starts one run that ends with an error', async () => {
+test('an upload lands read-only, becomes an item, and starts one run that ends with an error; a drop onto an item is only a hint', async () => {
   const bytes = 'a,b\n1,2\n', label = '2026-09-13';
   assert.equal((await call('POST', at(monthly, label))).status, 200);
   assert.equal((await call('POST', `${at(monthly, label, 'upload')}?by=t&pane=in&name=x.csv`, bytes)).status, 200);
@@ -96,7 +96,13 @@ test('an upload lands read-only, becomes an item, and starts one run that ends w
   const first = await json(at(monthly, label));
   assert.deepEqual(first.log.slice(-2).map((e: { op: string }) => e.op), ['upload', 'point']);
   assert.equal(first.log.at(-2).sha256, createHash('sha256').update(bytes).digest('hex'));
-  assert.ok(first.doc.items.some((i: { file: string; kind: string }) => i.file === 'upload/x.csv' && i.kind === 'input'));
+  const x = first.doc.items.find((i: { file: string; kind: string }) => i.file === 'upload/x.csv' && i.kind === 'input');
+  assert.ok(x);
+  assert.equal((await call('POST', `${at(monthly, label, 'upload')}?by=t&pane=in&name=x.csv&onto=${x.id}`, 'a,b\n1,3\n')).status, 200);
+  const second = await json(at(monthly, label));
+  assert.equal(second.log.at(-2).onto, x.id);
+  assert.equal(second.doc.items.find((i: { id: string }) => i.id === x.id).file, 'upload/x.csv', 'the agent decides what a drop replaces');
+  assert.ok(second.doc.items.some((i: { file: string }) => i.file === 'upload/x_2.csv'));
 
   let done;
   for (let i = 0; !done && i < 240; i++) {

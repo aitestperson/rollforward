@@ -1,6 +1,6 @@
 # rollforward
 
-Recurring tasks, files in and files out. People drop this period's input files into an instance of a series. An agent learns the transform from the closed instances, produces the output files, and pins notes and questions to the cells they're about. People answer by clicking an option, replace a file by dropping a new one, and close the instance when it's done. There is no prompt box on the main screen.
+Recurring tasks, files in and files out. People drop this period's input files into an instance of a series. An agent learns the transform from the closed instances, produces the output files, and pins notes and questions to the cells they're about. People answer by clicking an option, drop in a corrected file when one was wrong, and close the instance when it's done. There is no prompt box on the main screen.
 
 ![An instance: inputs on the left, outputs on the right](docs/screenshots/instance.png)
 
