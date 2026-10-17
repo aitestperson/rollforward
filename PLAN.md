@@ -148,7 +148,7 @@ The schemas are loose, and unknown fields are ignored, so the agent and the UI c
   - In a new instance, it builds the outputs the examples have, from this instance's inputs and, where the work rolls forward, the previous instance's outputs. It starts from the scripts of the most recently closed instance, and notes what's missing, what it assumed, and each value it carried rather than computed, with where it came from.
   - After an input changes, it rebuilds the outputs that used it, as new files, and notes what changed.
   - After a person revises an output, it compares their version with its own and rebuilds the outputs that depend on it. It asks whether the change is a one-off or a standing rule.
-  - It draws the graph: a handful of steps, each in a small file it writes, and each item's `from`, as its scripts actually read them.
+  - It draws the graph: a handful of steps, each in a small file it writes, even where earlier instances had none, and each item's `from`, as its scripts actually read them.
   - It puts each step and output on the screen when it's ready, and ends every run with `rf put` and a one-line summary.
 - **The agent makes the call.** Nothing in the system checks or scores outputs. The agent decides whether its work is right, and writes checks as scripts in `working/` when it judges it needs them.
 - **Answers carry over.** Close logs the default of every unanswered question as an answer. The next instance's agent applies the answers given after the previous instance's last run, and folds standing rules into `process.md`.
