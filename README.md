@@ -19,7 +19,7 @@ Recurring tasks, files in and files out. People drop this period's input files i
 ## Try it
 
     cp .env.example .env          # set OPENROUTER_API_KEY
-    docker compose up --build     # then invite yourself (see Access) and open the link
+    docker compose up --build     # then open http://127.0.0.1:8780
 
 The image comes with a demo series that is already populated: a weekly borrowing base for a made-up housewares company, nine weeks the agent has done.
 - **Week 08-16:** the agent starts fetching the inventory from a warehouse database, the lender's figures from a mailbox and the EUR rate from the ECB.
@@ -30,7 +30,7 @@ The image comes with a demo series that is already populated: a weekly borrowing
 
 ## Access
 
-Each person sets up an authenticator app from a one-time link. After that the site asks for their name and a code, and keeps the browser in for 7 days. Each wrong code doubles the wait before the next try, up to 5 minutes.
+Until someone is invited there is no sign-in, so keep the site on localhost. After that, each person sets up an authenticator app from a one-time link, and the site asks for their name and a code and keeps the browser in for 7 days. Each wrong code doubles the wait before the next try, up to 5 minutes.
 
     docker compose exec rollforward node src/access.ts /data invite alice   # prints /join/...: send alice the site's address with it
     docker compose exec rollforward node src/access.ts /data list
@@ -40,9 +40,9 @@ A link works until it's used. Each time it's opened it shows a new key, so a mai
 
 To reach it from the internet, run `tailscale funnel --bg 8780`.
 
-For a demo run in podman behind Tailscale Funnel, the justfile has `just invite NAME`, which prints the whole link, `just revoke NAME`, `just people`, `just logs`, and `just deploy`, which rebuilds it from this branch.
+For a demo run in podman behind Tailscale Funnel, the justfile has `just invite NAME`, which prints the whole link, `just revoke NAME`, `just people`, `just logs`, and `just deploy`, which rebuilds it from the committed main branch.
 
-**Security:** anyone signed in can steer the agent, which runs shell commands inside the container: it can read the API key, everyone's keys and every series, and reach whatever the host can reach.
+**Security:** anyone who can open the site, signed in once people are invited, can steer the agent, which runs shell commands inside the container: it can read the API key, everyone's keys and every series, and reach whatever the host can reach.
 
 ## Without Docker
 

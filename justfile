@@ -43,9 +43,9 @@ logs:
     podman logs -f --tail 50 {{live}}
 
 # The demo series in the volume read their sources at this repo's demo/run/data-sources.
-# Rebuild the live demo from the committed totp branch and restart it, unless a run is going
+# Rebuild the live demo from the committed main branch and restart it, unless a run is going
 deploy:
-    git -C {{cache}}/repo fetch -q {{justfile_directory()}} totp
+    git -C {{cache}}/repo fetch -q {{justfile_directory()}} main
     git -C {{cache}}/repo checkout -q --detach FETCH_HEAD
     podman build -q -t rollforward-public {{cache}}/repo
     if podman top {{live}} args 2>/dev/null | grep -q cli.js; then echo 'A run is going; deploy when it ends.'; exit 1; fi

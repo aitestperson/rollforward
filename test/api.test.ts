@@ -17,11 +17,10 @@ const tmp = mkdtempSync(join(tmpdir(), 'rf-')), root = join(tmp, 'data');
 let proc: ChildProcess, base: string;
 
 const at = (...parts: string[]) => `/api/larkfield/${parts.map(encodeURIComponent).join('/')}`;
-const headers = { cookie: '' };
-const json = async (path: string) => (await fetch(base + path, { headers })).json();
-const call = (method: string, path: string, body?: BodyInit) => fetch(base + path, { method, body, headers });
+const json = async (path: string) => (await fetch(base + path)).json();
+const call = (method: string, path: string, body?: BodyInit) => fetch(base + path, { method, body });
 const rfc = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ'; // base32 of the RFC 6238 test key
-const form = (path: string, fields: Record<string, string>, cookie = '') => fetch(base + path, { method: 'POST', body: new URLSearchParams(fields), headers: { cookie } });
+const form = (path: string, fields: Record<string, string>) => fetch(base + path, { method: 'POST', body: new URLSearchParams(fields) });
 const accessCli = (...args: string[]) => execFileSync(process.execPath, [join(app, 'src', 'access.ts'), root, ...args], { encoding: 'utf8' });
 const code = (secret: string, step = Math.floor(Date.now() / 30_000)) => {
   const counter = Buffer.alloc(8);
@@ -37,7 +36,6 @@ const shown = async (name: string) => (await seriesList()).find((s: { series: st
 
 before(async () => {
   cpSync(join(app, 'demo', 'snapshot'), root, { recursive: true });
-  writeFileSync(join(root, '.access.json'), JSON.stringify({ alex: { secret: rfc } }));
   const env: NodeJS.ProcessEnv = { ...process.env, HOME: join(tmp, 'home') };
   mkdirSync(env.HOME);
   delete env.OPENROUTER_API_KEY;
@@ -51,7 +49,6 @@ before(async () => {
     proc.stdout!.on('data', d => String(d).includes('rollforward on') && ok(null));
     proc.on('exit', code => fail(new Error(`server exited with ${code}`)));
   });
-  headers.cookie = cookieOf(await form('/login', { name: 'alex', code: code(rfc) }));
 });
 
 after(async () => {
@@ -118,7 +115,7 @@ test('an upload streams to disk as it arrives, and is refused if its instance cl
   let release!: () => void, sent = false;
   const held = new Promise<void>(ok => { release = ok; });
   const body = new ReadableStream({ async pull(c) { if (!sent) { sent = true; c.enqueue(new Uint8Array(1 << 20)); } else { await held; c.close(); } } });
-  const upload = fetch(`${base}${at(monthly, label, 'upload')}?by=t&pane=in&name=big.bin`, { method: 'POST', body, headers, duplex: 'half' } as RequestInit);
+  const upload = fetch(`${base}${at(monthly, label, 'upload')}?by=t&pane=in&name=big.bin`, { method: 'POST', body, duplex: 'half' } as RequestInit);
   await new Promise(r => setTimeout(r, 300));
   assert.equal(readdirSync(join(root, '.tmp')).length, 1, 'the body is being written before it has all arrived');
   assert.equal((await call('POST', at(monthly, label, 'close'))).status, 200);
@@ -204,19 +201,33 @@ test('a workspace can be made; a workspace or a series is archived and restored,
 test('files: uploads download as attachments; paths outside upload/ and working/ are refused', async () => {
   const file = (rel: string) => `/files/larkfield/${encodeURIComponent(series)}/2026-08-30/${encodeURIComponent(rel)}`;
   const name = 'Larkfield AR aging 083026.xlsx';
-  const r = await fetch(base + file(`upload/${name}`), { headers });
+  const r = await fetch(base + file(`upload/${name}`));
   assert.equal(r.status, 200);
   assert.match(r.headers.get('content-disposition')!, /^attachment/);
   assert.ok((Buffer.from(await r.arrayBuffer())).equals(readFileSync(join(root, 'larkfield', series, '2026-08-30', 'upload', name))));
   for (const rel of ['upload/../../workspace.json', 'workspace.json', 'log.jsonl'])
-    assert.equal((await fetch(base + file(rel), { headers })).status, 400, rel);
+    assert.equal((await fetch(base + file(rel))).status, 400, rel);
   symlinkSync('/proc/self/environ', join(root, 'larkfield', series, '2026-08-30', 'working', 'env.txt'));
-  assert.equal((await fetch(base + file('working/env.txt'), { headers })).status, 400, 'a link out of the instance is refused');
+  assert.equal((await fetch(base + file('working/env.txt'))).status, 400, 'a link out of the instance is refused');
 });
 
 test('a cross-site POST is refused, so another web page cannot steer the agent', async () => {
-  const r = await fetch(base + at(series, '2026-09-06', 'steer'), { method: 'POST', body: '{"text":"x"}', headers: { ...headers, 'sec-fetch-site': 'cross-site' } });
+  const r = await fetch(base + at(series, '2026-09-06', 'steer'), { method: 'POST', body: '{"text":"x"}', headers: { 'sec-fetch-site': 'cross-site' } });
   assert.equal(r.status, 403);
+});
+
+test('until someone is invited the site is open; then it asks for a name and a code from an authenticator app, and each wrong code doubles the wait before the next try', async () => {
+  assert.equal((await fetch(base + '/api')).status, 200);
+  writeFileSync(join(root, '.access.json'), JSON.stringify({ alex: { secret: rfc } }));
+  assert.equal(code(rfc, 1), '287082', 'the RFC 6238 vector for T=59, so the server agrees with the RFC');
+  assert.equal((await fetch(base + '/api')).status, 401);
+  assert.match(await (await fetch(base + '/')).text(), /authenticator app/);
+  assert.equal(await (await fetch(base + '/agent/workspace')).text(), 'no run for this token', 'the agent API takes its run token instead');
+  assert.equal((await form('/login', { name: 'alex', code: 'wrong' })).status, 401);
+  assert.equal((await form('/login', { name: 'alex', code: code(rfc) })).status, 429, 'a right code waits out the delay too');
+  await new Promise(r => setTimeout(r, 2000));
+  const cookie = cookieOf(await form('/login', { name: 'Alex ', code: code(rfc) }));
+  assert.equal((await fetch(base + '/api', { headers: { cookie } })).status, 200, 'a name ignores case and spaces');
 });
 
 test('an invite link sets up one person, once; revoking them ends their session', async () => {
@@ -232,16 +243,4 @@ test('an invite link sets up one person, once; revoking them ends their session'
   assert.match(accessCli('list'), /^sam\tset up$/m);
   accessCli('revoke', 'sam');
   assert.equal((await fetch(base + '/api', { headers: { cookie: sam } })).status, 401);
-});
-
-test('the site asks for a name and a code from an authenticator app; each wrong code doubles the wait before the next try', async () => {
-  assert.equal(code(rfc, 1), '287082', 'the RFC 6238 vector for T=59, so the server agrees with the RFC');
-  assert.equal((await fetch(base + '/api')).status, 401);
-  assert.match(await (await fetch(base + '/')).text(), /authenticator app/);
-  assert.equal(await (await fetch(base + '/agent/workspace')).text(), 'no run for this token', 'the agent API takes its run token instead');
-  assert.equal((await form('/login', { name: 'alex', code: 'wrong' })).status, 401);
-  assert.equal((await form('/login', { name: 'alex', code: code(rfc) })).status, 429, 'a right code waits out the delay too');
-  await new Promise(r => setTimeout(r, 2000));
-  const cookie = cookieOf(await form('/login', { name: 'Alex ', code: code(rfc) }));
-  assert.equal((await fetch(base + '/api', { headers: { cookie } })).status, 200, 'a name ignores case and spaces');
 });

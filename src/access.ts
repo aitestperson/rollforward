@@ -100,6 +100,7 @@ ${renderSVG(uri)}
 }
 
 export async function access(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
+  if (!existsSync(file)) return false;
   const form = async () => new URLSearchParams(Buffer.concat(await Array.fromAsync(req)).toString());
   if (url.pathname === '/login' && req.method === 'POST') login(res, await form());
   else if (url.pathname.startsWith('/join/')) enroll(res, url.pathname.slice(6), req.method === 'POST' ? await form() : undefined);
