@@ -25,7 +25,7 @@ The image comes with a demo series that is already populated: a weekly borrowing
 - **Week 08-16:** the agent starts fetching the inventory from a warehouse database, the lender's figures from a mailbox and the EUR rate from the ECB.
 - **Week 08-30:** it handles a stale snapshot and a one-week waiver from the lender.
 - **Week 09-06:** open it and drop the two files from `demo/try/2026-09-06/`. The agent fetches the inventory from the warehouse database, the loan activity from the mailbox and the EUR rate from the ECB.
-- **Things to open:** a tile, Preview, Process, the ops log and Advanced.
+- **Things to open:** a tile, Preview, the ops log and Advanced.
 - **Running the agent:** create an instance and drop files. A normal week costs about $0.20–0.60 with Claude Opus 5.5 through OpenRouter.
 
 ## Access

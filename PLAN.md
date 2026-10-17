@@ -32,6 +32,7 @@
   - A drop is a hint. The server adds each dropped file as a new item at once, even mid-run: an output if it was dropped on Outputs, otherwise an input, and the log records the tile it was dropped on, if any. The agent then decides what it is, such as a replacement for an input's file, and says so in a note.
   - There is no text box. People drop files, click answers and close the instance.
 - **State hints:** a spinner marks the running instance in the sidebar and the top bar, with a stripe along Outputs; ⧗ marks one waiting to run. A tile flashes when it changes and keeps a black dot until opened. An unanswered question's corner pulses, and an answer shows a spinner until the agent has read it. Uploads show progress, a finished run and an error each show a toast, the tab title counts open questions, Esc closes the top layer, and abandoned instances are struck through.
+- **Not shown:** `process.md`, the agent's own account of the process, which points at its scripts.
 - **Ops log:** a side panel listing who did what, when: uploads, runs, every change the screen showed, answers, steers, the agent's replies and the close. Earlier files open from here.
 - **Preview** shows a spreadsheet with its noted cells marked. If the file replaced an earlier one, "Compare with previous" highlights the cells that changed, and a click shows the old value.
 - **Advanced:** a bar along the bottom that expands over the panes, like VS Code's terminal panel.

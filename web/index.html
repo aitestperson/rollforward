@@ -382,7 +382,7 @@ function renderBar() {
     const d = lastDone();
     const state = data.doc.status !== 'open' ? `${data.doc.status === 'closed' ? 'Closed' : 'Abandoned'} · read-only` : data.run ? `<span class="spin"></span>Agent working · run ${data.run.n}` : data.queued ? '\u29D7 Queued' : d ? `Agent idle · last run ${hhmm(d.at)}` : 'Waiting for files';
     h += `<div class="state">${state}</div>`;
-    h += `<button class="btn top" data-act="process">Process</button><button class="btn top ${ui.log ? 'sel' : ''}" data-act="log">Ops log</button>`;
+    h += `<button class="btn top ${ui.log ? 'sel' : ''}" data-act="log">Ops log</button>`;
     const off = data.run ? 'disabled title="Available when the run ends"' : '';
     if (data.doc.status === 'open') h += `<button class="btn danger top" data-act="abandon" ${off}>Abandon</button><button class="btn commit top" data-act="close" ${off}>Close instance</button>`;
     else h += `<button class="btn top" data-act="duplicate">Duplicate</button>`;
@@ -663,16 +663,6 @@ async function preview(path, item) {
   }
 }
 
-async function showProcess() {
-  const from = data.log.find(e => e.op === 'create').from;
-  for (const [label, path] of [[cur.label, 'working/process.md'], [from, `../${from}/working/process.md`]]) {
-    const r = label && await fetch(fileUrl(path));
-    if (r?.ok) { pv = { title: `Process, as of ${label}`, path, text: await r.text(), md: true }; return renderPv(); }
-  }
-  pv = { title: 'Process', text: 'No process.md yet.' };
-  renderPv();
-}
-
 async function upload(files, pane, onto) {
   const by = who(), path = instPath(), mine = files.map(f => ({ f, pane, path, pct: 0 })), before = new Set(data.doc.items.map(i => i.file));
   uploads.push(...mine);
@@ -719,7 +709,6 @@ document.addEventListener('click', async ev => {
   if (act === 'uncard') { openItem = null; renderCard(); renderPanes(); }
   if (act === 'opencard') { openItem = el.dataset.item; markSeen(data.doc.items.filter(i => i.id === openItem)); renderPanes(); renderCard(); }
   if (act === 'preview') await preview(el.dataset.file, data.doc.items.find(i => i.id === el.dataset.item));
-  if (act === 'process') await showProcess();
   if (act === 'unpv') { pv = null; renderPv(); }
   if (act === 'settings') {
     const w = tree.find(w => w.workspace === cur.workspace), s = w.series.find(s => s.series === cur.series);
