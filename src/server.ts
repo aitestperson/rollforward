@@ -8,7 +8,8 @@ import { basename, dirname, join, posix, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInstance, duplicateInstance, forget, renameInstance, replaceReadOnly, HttpError, instance, instances, isPerson, safeName, type Entry, type Instance } from './store.ts';
 import { startRun, type Run } from './runner.ts';
-import { access } from './access.ts';
+import { authenticate, checkConfig, mode, removeUser, signOutEverywhere, upsertUser, users, type Me, type Role } from './auth.ts';
+import { initSystem, setOwner, workspace, workspaces } from './system.ts';
 
 const root = resolve(process.argv[2]);
 const app = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -16,8 +17,11 @@ const page = join(app, 'web', 'index.html');
 const python = join(app, '.venv', ...(process.platform === 'win32' ? ['Scripts', 'python.exe'] : ['bin', 'python']));
 const exec = promisify(execFile);
 const port = Number(process.argv[3] ?? 8780);
+const host = process.env.RF_HOST ?? '127.0.0.1';
 const LIMIT_MS = Number(process.env.RF_LIMIT_MIN ?? 120) * 60_000;
 const tmpDir = join(root, '.tmp');
+initSystem(root);
+checkConfig(host);
 rmSync(tmpDir, { recursive: true, force: true });
 mkdirSync(tmpDir);
 
@@ -141,6 +145,15 @@ function dirs(path: string): string[] {
   return existsSync(path) ? readdirSync(path).filter(n => !n.startsWith('.') && statSync(join(path, n)).isDirectory()).sort() : [];
 }
 
+// Each workspace belongs to one person; admins see them all. A workspace with no owner, such as the demo's, is the admins'.
+function canSee(me: Me, ws: string): boolean {
+  return me.role === 'admin' || workspace(ws)?.owner === me.email;
+}
+
+function mustSee(me: Me, ws: string) {
+  if (!canSee(me, ws) || !existsSync(join(root, ws))) throw new HttpError(404, `no workspace ${ws}`);
+}
+
 function queued(inst: Instance): boolean {
   const a = active.get(inst.series());
   return a?.inst !== inst && inst.doc.status === 'open' && (debounce.has(inst.dir) || (!!a && pending(inst, seenBefore(inst)).length > 0));
@@ -151,9 +164,9 @@ function questions(inst: Instance): number {
   return inst.doc.items.flatMap(i => i.notes ?? []).filter(n => n.id && n.options && !inst.answered(n.id)).length;
 }
 
-function tree() {
-  return dirs(root).map(workspace => ({
-    workspace, archived: existsSync(join(root, workspace, '.archived')),
+function tree(me: Me) {
+  return dirs(root).filter(ws => canSee(me, ws)).map(workspace => ({
+    workspace, archived: existsSync(join(root, workspace, '.archived')), owner: workspaceOwner(workspace),
     series: dirs(join(root, workspace)).map(series => ({
       series, archived: existsSync(join(root, workspace, series, '.archived')), visible_to: visibleTo(join(root, workspace, series)), reads: readable(join(root, workspace, series)),
       instances: instances(join(root, workspace, series)).map(i => ({
@@ -189,11 +202,14 @@ function trace(inst: Instance) {
   return out;
 }
 
-async function file(res: ServerResponse, url: URL, preview: boolean) {
-  const [workspace, series, label, ...rest] = url.pathname.split('/').slice(2).map(decodeURIComponent);
+const workspaceOwner = (ws: string) => workspace(ws)?.owner ?? null;
+
+async function file(me: Me, res: ServerResponse, url: URL, preview: boolean) {
+  const [ws, series, label, ...rest] = url.pathname.split('/').slice(2).map(decodeURIComponent);
   const rel = rest.join('/');
   if (posix.normalize(rel) !== rel || !/^(upload|working)\//.test(rel) || rel.split('/').includes('..')) throw new HttpError(400, 'bad path');
-  const dir = join(root, safeName(workspace), safeName(series), safeName(label)), path = join(dir, rel);
+  mustSee(me, safeName(ws));
+  const dir = join(root, safeName(ws), safeName(series), safeName(label)), path = join(dir, rel);
   if (!existsSync(path)) throw new HttpError(404, 'no such file');
   if (!realpathSync(path).startsWith(realpathSync(dir) + sep)) throw new HttpError(400, 'links must stay inside the instance');
   if (preview) {
@@ -210,17 +226,34 @@ async function file(res: ServerResponse, url: URL, preview: boolean) {
   createReadStream(path).pipe(res);
 }
 
-async function people(req: IncomingMessage, res: ServerResponse, url: URL) {
-  const [workspace, series, label, action] = url.pathname.split('/').slice(2).map(s => safeName(decodeURIComponent(s)));
-  const workspaceDir = join(root, workspace);
+async function people(me: Me, req: IncomingMessage, res: ServerResponse, url: URL) {
+  const [ws, series, label, action] = url.pathname.split('/').slice(2).map(s => safeName(decodeURIComponent(s)));
+  const workspaceDir = join(root, ws), by = me.email;
   if (!series) {
-    if (req.method === 'POST') mkdirSync(workspaceDir, { recursive: true });
-    else if (JSON.parse((await body(req)).toString()).archived) writeFileSync(join(workspaceDir, '.archived'), '');
-    else rmSync(join(workspaceDir, '.archived'), { force: true });
+    if (req.method === 'POST') {
+      if (existsSync(workspaceDir)) {
+        if (!canSee(me, ws)) throw new HttpError(409, `the name ${ws} is taken; choose another`);
+      } else {
+        mkdirSync(workspaceDir);
+        setOwner(ws, me.email);
+      }
+      return send(res, 200, 'ok');
+    }
+    mustSee(me, ws);
+    const { archived, owner } = JSON.parse((await body(req)).toString());
+    if (owner !== undefined) {
+      if (me.role !== 'admin') throw new HttpError(403, 'only an admin can give a workspace to someone');
+      if (owner !== null && !users()[owner]) throw new HttpError(400, `no user ${owner}`);
+      setOwner(ws, owner);
+    }
+    if (archived !== undefined) {
+      if (archived) writeFileSync(join(workspaceDir, '.archived'), '');
+      else rmSync(join(workspaceDir, '.archived'), { force: true });
+    }
     return send(res, 200, 'ok');
   }
+  mustSee(me, ws);
   const seriesDir = join(workspaceDir, series);
-  const by = url.searchParams.get('by') ?? 'someone';
   if (!label) {
     if (req.method === 'POST') {
       mkdirSync(seriesDir, { recursive: true });
@@ -305,22 +338,51 @@ async function people(req: IncomingMessage, res: ServerResponse, url: URL) {
   send(res, 200, 'ok');
 }
 
+async function admin(me: Me, req: IncomingMessage, res: ServerResponse, url: URL) {
+  if (me.role !== 'admin') throw new HttpError(403, 'admins only');
+  const email = decodeURIComponent(url.pathname.split('/')[2] ?? '').toLowerCase();
+  if (!email) {
+    if (req.method === 'POST') {
+      const { email, role } = JSON.parse((await body(req)).toString());
+      upsertUser(String(email ?? ''), { role: role === 'admin' ? 'admin' : 'user' });
+      return send(res, 200, 'ok');
+    }
+    const owned = Object.entries(workspaces());
+    return send(res, 200, Object.entries(users()).map(([email, { sub, epoch, ...u }]) => ({ email, ...u, workspaces: owned.filter(([, w]) => w.owner === email).map(([n]) => n) })));
+  }
+  if (!users()[email]) throw new HttpError(404, `no user ${email}`);
+  if (req.method === 'DELETE') {
+    if (email === me.email) throw new HttpError(409, 'you cannot remove yourself');
+    removeUser(email);
+  } else if (req.method === 'PUT') {
+    const { role, disabled, signout } = JSON.parse((await body(req)).toString());
+    if (email === me.email && (disabled || role === 'user')) throw new HttpError(409, 'you cannot lock yourself out');
+    if (role !== undefined && role !== 'admin' && role !== 'user') throw new HttpError(400, 'role is admin or user');
+    upsertUser(email, { ...(role && { role: role as Role }), ...(disabled !== undefined && { disabled: !!disabled }) });
+    if (signout) signOutEverywhere(email);
+  } else throw new HttpError(405, 'PUT or DELETE');
+  send(res, 200, 'ok');
+}
+
 createServer({ requestTimeout: 60 * 60_000 }, async (req, res) => {
   const url = new URL(req.url!, 'http://x');
   try {
     const site = req.headers['sec-fetch-site'];
     if (req.method !== 'GET' && site && site !== 'same-origin') throw new HttpError(403, 'cross-site request refused');
-    if (await access(req, res, url)) return;
+    if (url.pathname.startsWith('/agent/')) return await agent(req, res, url);
+    const me = await authenticate(req, res, url);
+    if (!me) return;
     if (url.pathname === '/') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       res.end(readFileSync(page));
-    } else if (url.pathname === '/api') send(res, 200, tree());
-    else if (url.pathname.startsWith('/files/')) await file(res, url, false);
-    else if (url.pathname.startsWith('/preview/')) await file(res, url, true);
-    else if (url.pathname.startsWith('/agent/')) await agent(req, res, url);
-    else if (url.pathname.startsWith('/api/')) await people(req, res, url);
+    } else if (url.pathname === '/me') send(res, 200, { ...me, sign_in: mode });
+    else if (url.pathname === '/api') send(res, 200, tree(me));
+    else if (url.pathname.startsWith('/files/')) await file(me, res, url, false);
+    else if (url.pathname.startsWith('/preview/')) await file(me, res, url, true);
+    else if (url.pathname.startsWith('/api/')) await people(me, req, res, url);
+    else if (url.pathname === '/users' || url.pathname.startsWith('/users/')) await admin(me, req, res, url);
     else throw new HttpError(404, 'not found');
   } catch (err) {
     send(res, err instanceof HttpError ? err.status : 500, (err as Error).message);
   }
-}).listen(port, process.env.RF_HOST ?? '127.0.0.1', () => console.log(`rollforward on http://${process.env.RF_HOST ?? '127.0.0.1'}:${port}, data in ${root}`));
+}).listen(port, host, () => console.log(`rollforward on http://${host}:${port}, data in ${root}, sign-in ${mode}`));

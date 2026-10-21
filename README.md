@@ -6,7 +6,8 @@ Recurring tasks, files in and files out. People drop this period's input files i
 
 - **The agent** is [Pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent), run over RPC with read, bash, edit and write tools, in the series folder. It copies and adapts the previous instance's scripts, so each instance's `working/` is a complete record of how its outputs were made.
 - **Inputs** are uploads, or sources a person points the agent to, such as a database, a mailbox folder or a web API. The agent keeps a frozen copy of what it read, and the tile shows where it came from.
-- **Workspaces hold series,** such as one client's. A workspace or a series can be archived, which hides it until it's restored.
+- **Workspaces hold series,** such as one client's. Each belongs to one person, who alone sees it, besides admins. A workspace or a series can be archived, which hides it until it's restored.
+- **People sign in with Microsoft,** with one button.
 - **Series can share.** A series can let other series read it, one way.
 - **Everything is files on disk.** Each instance has `upload/` (people's files), `working/` (the agent's), `workspace.json` (what the screen shows) and `log.jsonl` (every event).
 
@@ -30,19 +31,23 @@ The image comes with a demo series that is already populated: a weekly borrowing
 
 ## Access
 
-Until someone is invited there is no sign-in, so keep the site on localhost. After that, each person sets up an authenticator app from a one-time link, and the site asks for their name and a code and keeps the browser in for 7 days. Each wrong code doubles the wait before the next try, up to 5 minutes.
+People sign in with one button, **Sign in with Microsoft**, and type nothing.
 
-    docker compose exec rollforward node src/access.ts /data invite alice   # prints /join/...: send alice the site's address with it
-    docker compose exec rollforward node src/access.ts /data list
-    docker compose exec rollforward node src/access.ts /data revoke alice   # her link, code and sessions stop working at once
+- **Demo (the default):** the button leads to a picker of two demo accounts: `admin@demo.test`, an admin, and `bob@demo.test`, a user. Anyone who reaches the site can be the demo admin, so keep it on localhost.
+- **Your organisation's Microsoft accounts:** register an app in Microsoft Entra ID with the redirect address `RF_PUBLIC_URL/auth/callback` and a client secret, and set the four `RF_OIDC_*`/`RF_PUBLIC_URL` values in `.env` (see `.env.example`). The same button then goes to Microsoft. `RF_ADMINS` names the admins; `RF_ALLOWED_DOMAINS` and `RF_AUTO_PROVISION=0` narrow who may come in.
+- **What people see:** each workspace has one owner. A user sees only the workspaces they own, with their series and files. Admins see every workspace, give one to someone in its settings, and manage people on the Users page. The same from a shell:
 
-A link works until it's used. Each time it's opened it shows a new key, so a mail scanner that opens it first learns nothing. Inviting someone again moves them to a new phone. The list is `.access.json` in the data root.
+      docker compose exec rollforward node src/auth.ts /data list
+      docker compose exec rollforward node src/auth.ts /data add alice@example.com [admin]
+      docker compose exec rollforward node src/auth.ts /data disable alice@example.com   # her sessions end at once
 
-To reach it from the internet, run `tailscale funnel --bg 8780`.
+Sessions last 12 hours (`RF_SESSION_HOURS`). The people, the owners and the session key are in `.rf/` in the data root.
 
-For a demo run in podman behind Tailscale Funnel, the justfile has `just invite NAME`, which prints the whole link, `just revoke NAME`, `just people`, `just logs`, and `just deploy`, which rebuilds it from the committed main branch.
+To reach it from the internet, run `tailscale funnel --bg 8780`, with Microsoft sign-in configured.
 
-**Security:** anyone who can open the site, signed in once people are invited, can steer the agent, which runs shell commands inside the container: it can read the API key, everyone's keys and every series, and reach whatever the host can reach.
+For a demo run in podman behind Tailscale Funnel, the justfile has `just invite EMAIL [admin]`, `just revoke EMAIL`, `just people`, `just logs`, and `just deploy`, which rebuilds it from the committed main branch.
+
+**Security:** anyone signed in can steer the agents of their own workspaces, which run shell commands inside the container: they can read the model's API key and every series, and reach whatever the host can reach.
 
 ## Without Docker
 

@@ -16,7 +16,8 @@ export type Run = {
 export async function startRun(o: { seriesDir: string; instanceDir: string; env: Record<string, string>; message: string; onEvent: (e: JsonAgentSessionEvent) => void }): Promise<Run> {
   const client = new RpcClient({
     cliPath, cwd: o.seriesDir, provider, model,
-    env: { ...o.env, PATH: [join(app, 'bin'), join(app, '.venv', process.platform === 'win32' ? 'Scripts' : 'bin'), process.env.PATH].join(delimiter), PYTHONPATH: join(o.seriesDir, '.pylib') },
+    // Pi gets the server's environment; blank the sign-in secret so the agent never sees it.
+    env: { ...o.env, PATH: [join(app, 'bin'), join(app, '.venv', process.platform === 'win32' ? 'Scripts' : 'bin'), process.env.PATH].join(delimiter), PYTHONPATH: join(o.seriesDir, '.pylib'), RF_OIDC_CLIENT_SECRET: '' },
     args: ['--no-extensions', '--no-skills', '--no-mcp', '--no-context-files', '--no-prompt-templates',
       '--tools', 'read,bash,edit,write', '--append-system-prompt', join(app, 'prompt.md'),
       '--thinking', process.env.RF_THINKING ?? 'high',

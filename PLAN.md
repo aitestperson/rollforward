@@ -6,7 +6,8 @@
 
 ## Concepts
 
-- **Workspace:** a top-level folder of series, such as one client's or one team's. No run sees another workspace's files (enforced from M3).
+- **People:** everyone signs in with a Microsoft account, by pressing Sign in with Microsoft. A person is a **user** or an **admin**.
+- **Workspace:** a top-level folder of series, such as one client's or one team's. It has one **owner**: only the owner and admins see it, its series and their files. A workspace with no owner is the admins'. No run sees another workspace's files (enforced from M3).
 - **Series:** a recurring transform, such as "Weekly borrowing base": each instance's input files become its output files. The folder name is the series' name. What an instance should contain comes from earlier instances, not from a declaration.
 - **Visibility:** a series can make itself visible to other series of the workspace, or to all of them. Their agents may then read it, never write it, and copy into their own `working/` what they rely on. Visibility is one way, and only the publishing series grants it.
 - **Archive:** a workspace or a series that's no longer in use can be archived. It leaves the sidebar, except under "Show archived", until it's restored, and nothing in it changes. It isn't transitive, but what a reader copies can flow on.
@@ -45,13 +46,15 @@
 - **Abandon:** the other way an instance ends. It stays as it is, but it isn't an example, never becomes a new instance's starting point, and applies no defaults. It is also disabled while a run is going. Closed and abandoned instances both show under "Show closed".
 - **Duplicate:** a closed or abandoned instance can be copied, under a new label, into an open instance. The copy has its files, screen and log, but not its agent session, and its log records the copy as `duplicate`.
 - **Rename:** an open instance's label changes from the pencil by its title, between runs. The log records `rename`.
-- **Series settings:** the series' name, its visibility (the other series that can see it) and Archive. Renaming moves the series folder, and waits until no run is going. **Workspace settings** hold only Archive for now. An archived workspace or series is restored from its settings, under "Show archived".
-- **Names:** until M3 adds sign-in, the page asks for a name once and keeps it in the browser.
+- **Series settings:** the series' name, its visibility (the other series that can see it) and Archive. Renaming moves the series folder, and waits until no run is going. **Workspace settings** hold the owner (admins only) and Archive. An archived workspace or series is restored from its settings, under "Show archived".
+- **Users** (admins): who can sign in, their role, their workspaces and when they last signed in; Add, Disable, Sign out everywhere and Remove.
+- **Names:** the log records each person by the email they signed in with. The sidebar's foot shows who is signed in, with Sign out.
 
 ## Storage
 
 Workspaces are folders on the host's disk. There is no database.
 
+    .rf/                      the server's own: users.json, workspaces.json (each workspace's owner) and session.key
     <workspace>/              e.g. "Larkfield"
       .archived               there while the workspace is archived, set by people through the server
       <series>/               e.g. "Weekly borrowing base"; moved only by a rename in Series settings
@@ -205,13 +208,17 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
    - it polls every 4 seconds rather than streaming events;
    - uploads, answers, Steer, Interrupt and Close as POSTs, refused when the browser marks them cross-site, so another web page can't steer an agent;
    - file downloads: attachments with a sandboxing CSP (images inline), and only files whose real path stays inside the instance, so an agent's link can't expose the server's files;
-   - the name, asked once and kept in the browser.
+   - who is who, from the sign-in (see M3).
 
    The demo can run behind `tailscale serve`, to try it from a phone.
 
    Then add a second series, such as a monthly rec whose day-2 GL listing arrives later.
 3. **M3, hosting.** Sign-in, one workspace per client, and backups. Pi runs in Docker Sandboxes, built from Docker's Pi kit plus Python, the spreadsheet libraries and `rf`.
-   - **A code gate (built, for an early demo):** once anyone has been invited, the server asks for a name and a TOTP code from an authenticator app before anything but `/agent/`; until then the site is open, for a run on localhost. Each person sets up their own secret from a one-time invite link, made and revoked with `node src/access.ts`; the list is `.access.json` in the data root. A right code sets a cookie for 7 days, signed with the person's secret, so revoking or re-inviting them ends it. Each wrong code doubles the wait before anyone's next try, up to 5 minutes. The browser takes its name for the log from the sign-in.
+   - **Sign in with Microsoft (built, [src/auth.ts](src/auth.ts)):** everything but `/agent/` needs a session. Someone without one sees a page with a single Sign in with Microsoft button; nobody types an address or a code.
+     - **Demo** (the default): the button leads to a picker of two fixed demo accounts, `admin@demo.test` (admin) and `bob@demo.test` (user), one click each. Anyone who reaches the site can be the demo admin, so keep a demo on localhost; the server warns otherwise.
+     - **Microsoft** (once `RF_OIDC_ISSUER`, `RF_OIDC_CLIENT_ID`, `RF_OIDC_CLIENT_SECRET` and `RF_PUBLIC_URL` are set for an app registered in Microsoft Entra ID): the same button goes to Microsoft, by the authorization code flow with PKCE. The server checks the ID token's issuer, audience, expiry and nonce; it takes the token straight from Microsoft's token endpoint over TLS, so it doesn't check the signature (OpenID Connect Core 3.1.3.7). Each sign-in in flight keeps its state in a cookie of its own, so sign-ins started in several tabs don't undo each other. The first sign-in adds a person as a user unless `RF_AUTO_PROVISION=0`; `RF_ALLOWED_DOMAINS` limits who may, `RF_ADMINS` names admins, and a person's Microsoft id is pinned at their first sign-in.
+     - A session is a cookie for 12 hours (`RF_SESSION_HOURS`), signed with `.rf/session.key` and the person's epoch, so Disable and Sign out everywhere end it at once. People are managed on the Users page or with `node src/auth.ts DATA_ROOT list | add | role | disable | enable | signout | remove`. The agent's environment gets a blank `RF_OIDC_CLIENT_SECRET`.
+   - **Workspaces per person (built):** every API call, file and preview is checked against the workspace's owner, and a workspace someone else owns answers 404. A new workspace belongs to whoever makes it, and a name another person uses is taken. Admins see every workspace and give one to someone from its settings.
    - Each sandbox is a microVM. The series folder is mounted read-only; only the instance's `working/` and `session/` are writable.
    - **Network:** outbound traffic is denied except to the model API and the agent API. Docker's proxy adds the model key on the way out, so the key never enters the sandbox. The agent API is reached at `host.docker.internal` after `sbx policy allow network --sandbox <name> localhost:<port>`.
    - **The agent API gets its own port.** Each call carries a per-run token that is bound to one instance and expires when the run ends. A sandbox can then never reach another workspace through the server.
@@ -265,11 +272,11 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
 20. **Two end states** (15 Oct): Close or Abandon.
 21. **Series visibility** (15 Oct): one way, granted by the publishing series, read-only for the reader; one workspace for now. People's roles per series (owner, member, visitor) come later.
 22. **Duplicate and series settings** (15 Oct): a closed or abandoned instance can be duplicated into an open one. Each series has settings, for now its name and its visibility to other series.
-23. **A TOTP gate for an early public demo** (16 Oct): codes from an authenticator app rather than a password, since codes expire and an enrolled phone is hard to pass on. One secret per person, set up from a one-time link, so one person can be revoked. The gate is one module, `src/access.ts`, and is off until someone is invited. Microsoft sign-in through oauth2-proxy is dropped for now, since the tenant's admin would have to consent.
+23. **A TOTP gate for an early public demo** (16 Oct; replaced by 26): codes from an authenticator app rather than a password, since codes expire and an enrolled phone is hard to pass on. One secret per person, set up from a one-time link, so one person can be revoked. Microsoft sign-in through oauth2-proxy was dropped then, since the tenant's admin would have to consent.
 24. **Workspaces** (16 Oct): the top-level folder is a workspace, such as a client's. The sidebar cascades workspace, series and instance, with each row's actions in its corner rather than as rows of their own. A workspace or a series can be archived, which hides it until it's restored; nothing in it changes, and its runs carry on.
 
 25. **The graph** (17 Oct): the screen shows the process as a graph of inputs, steps and outputs, with Outputs in their own column so they never scroll away. What each item is made from is a hint for people: nothing runs it, and the agent needn't follow it. Drops are hints too, and the page doesn't show `process.md`, which points at the agent's scripts.
-
+26. **Sign in with Microsoft, and workspaces per person** (20 Oct): one button, and people type nothing. Until the organisation registers an app in Entra ID, the button leads to two fixed demo accounts; once it's configured, the same button goes to Microsoft. The server runs the sign-in itself rather than through a proxy, so it knows who is who for ownership and the log. Each workspace has one owner; others don't see it; admins see and manage everything.
 ## Proposed by the agent (open to change)
 
 1. People answer questions by clicking an option. If none fits, they fix the file and drop it back.
