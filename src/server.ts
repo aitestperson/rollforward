@@ -4,15 +4,16 @@ import { createHash, randomUUID } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { basename, dirname, join, normalize, resolve, sep } from 'node:path';
+import { basename, dirname, join, posix, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createInstance, duplicateInstance, forget, renameInstance, HttpError, instance, instances, isPerson, safeName, type Entry, type Instance } from './store.ts';
+import { createInstance, duplicateInstance, forget, renameInstance, replaceReadOnly, HttpError, instance, instances, isPerson, safeName, type Entry, type Instance } from './store.ts';
 import { startRun, type Run } from './runner.ts';
 import { access } from './access.ts';
 
 const root = resolve(process.argv[2]);
 const app = join(dirname(fileURLToPath(import.meta.url)), '..');
 const page = join(app, 'web', 'index.html');
+const python = join(app, '.venv', ...(process.platform === 'win32' ? ['Scripts', 'python.exe'] : ['bin', 'python']));
 const exec = promisify(execFile);
 const port = Number(process.argv[3] ?? 8780);
 const LIMIT_MS = Number(process.env.RF_LIMIT_MIN ?? 120) * 60_000;
@@ -191,12 +192,12 @@ function trace(inst: Instance) {
 async function file(res: ServerResponse, url: URL, preview: boolean) {
   const [workspace, series, label, ...rest] = url.pathname.split('/').slice(2).map(decodeURIComponent);
   const rel = rest.join('/');
-  if (normalize(rel) !== rel || !/^(upload|working)\//.test(rel) || rel.split('/').includes('..')) throw new HttpError(400, 'bad path');
+  if (posix.normalize(rel) !== rel || !/^(upload|working)\//.test(rel) || rel.split('/').includes('..')) throw new HttpError(400, 'bad path');
   const dir = join(root, safeName(workspace), safeName(series), safeName(label)), path = join(dir, rel);
   if (!existsSync(path)) throw new HttpError(404, 'no such file');
   if (!realpathSync(path).startsWith(realpathSync(dir) + sep)) throw new HttpError(400, 'links must stay inside the instance');
   if (preview) {
-    const { stdout } = await exec(join(app, '.venv', 'bin', 'python'), [join(app, 'src', 'preview.py'), path], { timeout: 30_000, maxBuffer: 64e6 });
+    const { stdout } = await exec(python, [join(app, 'src', 'preview.py'), path], { timeout: 30_000, maxBuffer: 64e6 });
     res.writeHead(200, { 'content-type': 'application/json' });
     return void res.end(stdout);
   }
@@ -237,11 +238,7 @@ async function people(req: IncomingMessage, res: ServerResponse, url: URL) {
           if (v.includes(series)) updates.set(join(workspaceDir, s), v.map(n => (n === series ? to : n)));
         }
       }
-      for (const [dir, names] of updates) {
-        const p = join(dir, 'series.json');
-        writeFileSync(p + '.tmp', JSON.stringify({ visible_to: names }, null, 1), { mode: 0o444 });
-        renameSync(p + '.tmp', p);
-      }
+      for (const [dir, names] of updates) replaceReadOnly(join(dir, 'series.json'), JSON.stringify({ visible_to: names }, null, 1));
       if (archived) writeFileSync(join(seriesDir, '.archived'), '');
       else rmSync(join(seriesDir, '.archived'), { force: true });
       if (to !== series) {
