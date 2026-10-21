@@ -8,6 +8,7 @@ Recurring tasks, files in and files out. People drop this period's input files i
 - **Inputs** are uploads, or sources a person points the agent to, such as a database, a mailbox folder or a web API. The agent keeps a frozen copy of what it read, and the tile shows where it came from.
 - **Workspaces hold series,** such as one client's. Each belongs to one person, who alone sees it, besides admins. A workspace or a series can be archived, which hides it until it's restored.
 - **People sign in with Microsoft,** with one button.
+- **Tool use:** a series can let its agent use company systems, such as E1, DMS or XTS, in a browser the server runs, signed in as a service account whose password the agent never sees. Each write waits for a person to approve it.
 - **Series can share.** A series can let other series read it, one way.
 - **Everything is files on disk.** Each instance has `upload/` (people's files), `working/` (the agent's), `workspace.json` (what the screen shows) and `log.jsonl` (every event).
 
@@ -42,6 +43,16 @@ People sign in with one button, **Sign in with Microsoft**, and type nothing.
       docker compose exec rollforward node src/auth.ts /data disable alice@example.com   # her sessions end at once
 
 Sessions last 12 hours (`RF_SESSION_HOURS`). The people, the owners and the session key are in `.rf/` in the data root.
+
+## Tool use
+
+A series picks which company systems its agent may use, under **Tool use** in its settings: E1, DMS and XTS are always offered, and choosing none is fine. Admins set each one up under **Systems**, at the foot of the sidebar, with its address and a service account the agent signs in as; until then it can be chosen, but the agent can't use it. Admins can add other systems there too.
+
+- The agent works them through a browser the server runs (Playwright with Chromium). The server signs in, so the password stays in `.rf/` and the agent never sees it.
+- Reading is free. A write (saving or submitting anything) is stopped until the agent proposes it and a person approves it from the instance's screen; then the server makes it and keeps a screenshot.
+- By default every request but GET counts as a write. A system that also posts its searches needs its write requests named under Systems, such as `POST */save*`.
+
+Without Docker, the browser needs `node node_modules/playwright/cli.js install chromium` once.
 
 To reach it from the internet, run `tailscale funnel --bg 8780`, with Microsoft sign-in configured.
 

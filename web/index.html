@@ -44,9 +44,10 @@ a { color: inherit; }
 .vl .sub { color: var(--ink-3); font-size: 12.5px; }
 .vl hr { width: 100%; margin: 6px 0 0; border: 0; border-top: 1px solid var(--rule); }
 .vl input[type=text] { font: inherit; padding: 7px 9px; border: 1px solid var(--rule-2); border-radius: var(--r1); }
-.pv.small { inset: 12vh auto auto 50%; transform: translateX(-50%); width: min(420px, 92vw); }
+.pv.small { inset: 12vh auto auto 50%; transform: translateX(-50%); width: min(420px, 92vw); max-height: 80dvh; }
 .vl label { display: flex; align-items: center; gap: 8px; }
-.vl :is(input[type=email], select) { font: inherit; padding: 7px 9px; border: 1px solid var(--rule-2); border-radius: var(--r1); background: var(--sheet); min-width: 0; max-width: 100%; }
+.vl textarea { font: 12.5px/1.5 var(--mono); padding: 7px 9px; border: 1px solid var(--rule-2); border-radius: var(--r1); resize: vertical; min-height: 4.5em; }
+.vl :is(input[type=email], input[type=password], select) { font: inherit; padding: 7px 9px; border: 1px solid var(--rule-2); border-radius: var(--r1); background: var(--sheet); min-width: 0; max-width: 100%; }
 .vl .row2 { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .pv.mid { inset: 6vh auto auto 50%; transform: translateX(-50%); width: min(660px, 94vw); max-height: 88vh; }
 .ut { border-collapse: collapse; font-size: 12.5px; width: 100%; }
@@ -56,6 +57,12 @@ a { color: inherit; }
 .acct { padding: 14px 8px 0; font-size: 12.5px; color: var(--ink-2); border-top: 1px solid var(--rule); margin-top: 10px; }
 .acct .mail { color: var(--ink-3); font-size: 12px; word-break: break-all; }
 .acct .quiet { display: inline-block; padding: 4px 10px 0 0; }
+.reqs { display: grid; gap: 8px; margin-bottom: 18px; max-width: 760px; }
+.rq { background: var(--sheet); border: 1px solid var(--rule-2); border-left: 3px solid var(--note); border-radius: var(--r1); padding: 10px 12px; font-size: 13px; }
+.rq .sub { color: var(--ink-3); font-size: 12.5px; margin-top: 4px; }
+.rq ol { margin: 6px 0; padding-left: 20px; font: 12px/1.5 var(--mono); color: var(--ink-2); }
+.rq img { display: block; max-width: 100%; max-height: 220px; margin-top: 6px; border: 1px solid var(--rule); cursor: zoom-in; }
+.rq .acts { border: 0; padding-top: 6px; margin-top: 2px; }
 @media (max-width: 560px) { .ut th:nth-child(3), .ut td:nth-child(3), .ut th:nth-child(4), .ut td:nth-child(4) { display: none; } }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--note); display: inline-block; margin-left: 6px; vertical-align: 1px; }
 .dot.k { background: var(--ink); }
@@ -138,7 +145,7 @@ a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: 
 .pvh b { font-size: 13px; word-break: break-all; margin-right: auto; }
 .tabs { display: flex; gap: 6px; padding: 8px 14px; flex-wrap: wrap; border-bottom: 1px solid var(--rule); }
 .tabs .btn { padding: 4px 9px; font-size: 12px; }
-.pvb { flex: 1; overflow: auto; }
+.pvb { flex: 1; min-height: 0; overflow: auto; }
 .pvb .say { padding: 14px 18px; white-space: pre-wrap; font-size: 13.5px; }
 .pvb pre { white-space: pre-wrap; word-break: break-word; font: 12.5px/1.5 var(--mono); padding: 14px 16px; margin: 0; }
 .pvb img { max-width: 100%; display: block; margin: 12px auto; }
@@ -351,7 +358,7 @@ async function refresh() {
 }
 
 function render() {
-  const qs = tree.filter(w => !w.archived).flatMap(w => w.series.filter(s => !s.archived).flatMap(s => s.instances)).reduce((t, i) => t + i.questions, 0);
+  const qs = tree.filter(w => !w.archived).flatMap(w => w.series.filter(s => !s.archived).flatMap(s => s.instances)).reduce((t, i) => t + i.questions + i.requests, 0);
   document.title = `${qs ? `(${qs}) ` : ''}${cur?.label ? cur.label + ' \u00b7 ' : ''}rollforward`;
   renderSide();
   renderBar();
@@ -363,7 +370,7 @@ function render() {
 
 function renderSide() {
   const listed = (x, on) => !x.archived || showArchived || on;
-  const asks = s => !s.archived && s.instances.some(i => i.questions);
+  const asks = s => !s.archived && s.instances.some(i => i.questions || i.requests);
   const btn = (act, title, glyph) => `<button class="add" data-act="${act}" title="${title}">${glyph}</button>`;
   let h = `<div class="row head"><span class="nm">Workspaces</span>${btn('new-workspace', 'New workspace', '+')}</div>`;
   for (const w of tree) {
@@ -382,7 +389,7 @@ function renderSide() {
       const closed = s.instances.length - open.length;
       h += '<div class="tree">';
       for (const i of s.instances.filter(i => i.status === 'open' || showClosed || i.label === cur.label)) {
-        const st = i.running ? '<span class="spin"></span> running' : i.queued ? '\u29D7 queued' : i.questions ? `<span class="q">${i.questions} question${i.questions > 1 ? 's' : ''}</span>` : i.status === 'open' ? '' : i.status;
+        const st = i.running ? '<span class="spin"></span> running' : i.queued ? '\u29D7 queued' : i.requests ? `<span class="q">${i.requests} to approve</span>` : i.questions ? `<span class="q">${i.questions} question${i.questions > 1 ? 's' : ''}</span>` : i.status === 'open' ? '' : i.status;
         const k = `rev:/api/${enc(w.workspace)}/${enc(s.series)}/${enc(i.label)}`;
         localStorage[k] ??= i.rev;
         h += `<a class="row inst ${i.status} ${cur.label === i.label ? 'on' : ''}" href="#/${enc(w.workspace)}/${enc(s.series)}/${enc(i.label)}"><span class="nm">${esc(i.label)}${i.rev > +localStorage[k] ? '<span class="dot k"></span>' : ''}</span><span class="n">${st}</span></a>`;
@@ -396,11 +403,18 @@ function renderSide() {
   if (archived) h += `<button class="quiet" data-act="toggle-archived">${showArchived ? 'Hide' : 'Show'} archived (${archived})</button>`;
   h += `<div class="legend"><div><i class="p">Blue</i> uploaded by a person</div><div><i>Black</i> made by the agent</div><div><span class="tri"></span>a note, for information</div><div><span class="tri q"></span>a question for you</div><div><span class="dash"></span>expected, not there yet</div></div>`;
   h += `<div class="acct"><div>${esc(me.name)}${me.role === 'admin' ? ' · admin' : ''}</div><div class="mail">${esc(me.email)}</div>`
-    + (me.role === 'admin' ? '<button class="quiet" data-act="users">Users</button>' : '') + '<button class="quiet" data-act="signout">Sign out</button></div>';
+    + (me.role === 'admin' ? '<button class="quiet" data-act="users">Users</button><button class="quiet" data-act="systems">Systems</button>' : '') + '<button class="quiet" data-act="signout">Sign out</button></div>';
   put($('#side'), h);
 }
 
 function lastDone() { return data.log.findLast(e => e.op === 'done'); }
+
+function pendingReqs() {
+  const decided = new Set(data.log.filter(e => e.op === 'approve' || e.op === 'reject').map(e => e.request));
+  return data.log.filter(e => e.op === 'request' && !decided.has(e.request));
+}
+
+const stepText = s => `${s.do}${s.target ? ` ${s.target}` : ''}${s.value !== undefined ? ` = "${s.value}"` : ''}`;
 
 function renderBar() {
   let h = `<button class="menu" data-act="menu">☰</button>`;
@@ -467,7 +481,11 @@ function renderPanes() {
   const shown = new Set(items.map(i => i.file)), also = new Map();
   for (const i of items) for (const n of i.notes ?? []) for (const f of n.files ?? []) if (!shown.has(f) && !also.has(f)) also.set(f, i);
   const alsoUsed = also.size ? `<div class="also"><div class="ah">Also used</div>${[...also].map(([f, i]) => `<div><a data-act="preview" data-file="${esc(f)}">${esc(fname(f))}</a> <span class="via">· noted on <a data-act="opencard" data-item="${esc(i.id)}">${esc(i.name)}</a></span></div>`).join('')}</div>` : '';
-  put($('#flow'), `<div class="cols">${cols.map((col, k) => `<div class="col">${k === 0 ? head('Inputs', col, 'in') : k === 1 ? head('Steps', steps) : '<div class="ph"></div>'}${col.map(tile).join('')}${k === 0 ? adding('in') + alsoUsed : ''}</div>`).join('')}</div>`
+  const reqs = pendingReqs().map(r => `<div class="rq"><div><b>The agent asks to write</b> in ${esc(r.name)}: ${esc(r.description)}</div>`
+    + `<div class="sub">Starting at ${esc(r.start)}, the server would:</div><ol>${r.steps.map(s => `<li>${esc(stepText(s))}</li>`).join('')}</ol>`
+    + (r.screenshot ? `<a data-act="preview" data-file="${esc(r.screenshot)}"><img src="${fileUrl(r.screenshot)}" alt="The page when the agent asked"></a>` : '')
+    + `<div class="acts"><button class="btn commit" data-act="approve" data-req="${esc(r.request)}">Approve and run</button><button class="btn danger" data-act="reject" data-req="${esc(r.request)}">Reject</button></div></div>`).join('');
+  put($('#flow'), (reqs ? `<div class="reqs">${reqs}</div>` : '') + `<div class="cols">${cols.map((col, k) => `<div class="col">${k === 0 ? head('Inputs', col, 'in') : k === 1 ? head('Steps', steps) : '<div class="ph"></div>'}${col.map(tile).join('')}${k === 0 ? adding('in') + alsoUsed : ''}</div>`).join('')}</div>`
     + (open ? '<div class="hint">Drop files to add them. The agent decides what each one is.</div>' : ''));
   put($('#outs'), `<div class="col">${head('Outputs', outs, 'out')}${outs.map(tile).join('')}${adding('out')}</div>${open ? '<div class="hint">Drop a revised output here.</div>' : ''}`);
   $('#outs').classList.toggle('busy', !!data.run);
@@ -537,6 +555,11 @@ function logText(e) {
     reply: () => `${w} replied<div class="d">${esc(e.text)}</div>`,
     rename: () => `${w} renamed the instance from ${esc(e.from)}`,
     duplicate: () => `${w} made this instance as a copy of ${esc(e.from)}`,
+    browse: () => `${w} used ${esc(e.system.toUpperCase())}<div class="d">${esc([e.action, ...e.args].join(' '))}</div>`,
+    request: () => `${w} asked to write in ${esc(e.name)} (${esc(e.request)})<div class="d">${esc(e.description)}</div>${e.screenshot ? `<div class="f"><a data-act="preview" data-file="${esc(e.screenshot)}">${esc(e.screenshot)}</a></div>` : ''}`,
+    approve: () => `${w} approved ${esc(e.request)}`,
+    reject: () => `${w} rejected ${esc(e.request)}${e.reason ? `<div class="d">${esc(e.reason)}</div>` : ''}`,
+    call: () => `${w} ${e.ok ? 'made' : 'could not make'} ${esc(e.request)} in ${esc(e.name)}<div class="d">${esc(e.error ?? e.text ?? '')}</div><div class="f"><a data-act="preview" data-file="${esc(e.screenshot)}">${esc(e.screenshot)}</a></div>`,
   }[e.op]?.() ?? `${w} ${esc(e.op)}`;
 }
 
@@ -697,7 +720,7 @@ function sheetTable(s, first) {
 function renderPv() {
   $('#pv').hidden = !pv;
   if (!pv) return;
-  $('#pv').className = 'pv' + (pv.settings ? (pv.settings.kind === 'users' ? ' mid' : ' small') : '');
+  $('#pv').className = 'pv' + (pv.settings ? (['users', 'systems'].includes(pv.settings.kind) ? ' mid' : ' small') : '');
   let h = `<div class="pvh"><b>${esc(pv.title)}</b>${pv.sheets && /\.(xlsx|xlsm|xls|csv)$/i.test(pv.was ?? '') ? `<button class="btn ${pv.cmp ? 'sel' : ''}" data-act="compare">${pv.cmp ? `Changes since ${esc(fname(pv.was))}` : 'Compare with previous'}</button>` : ''}${pv.path ? `<a class="btn" href="${fileUrl(pv.path)}">Download</a>` : ''}<button class="btn" data-act="unpv">Close</button></div>`;
   if (pv.sheets) {
     if (pv.sheets.length > 1) h += `<div class="tabs">${pv.sheets.map((s, k) => `<button class="btn ${k === pv.sheet ? 'sel' : ''}" data-act="sheet" data-k="${k}">${esc(s.name)}</button>`).join('')}</div>`;
@@ -707,12 +730,18 @@ function renderPv() {
     h += `<div class="pvb"><pre>${esc(Object.entries(m.headers).map(([k, v]) => `${k}: ${v}`).join('\n') + (m.attachments.length ? `\nAttachments: ${m.attachments.join(', ')}` : '') + '\n\n' + m.text)}</pre></div>`;
   } else if (pv.image) h += `<div class="pvb"><img src="${fileUrl(pv.path)}" alt=""></div>`;
   else if (pv.text !== undefined) h += `<div class="pvb">${pv.md ? `<div class="say">${md(pv.text)}</div>` : `<pre>${esc(pv.text)}</pre>`}</div>`;
-  else if (pv.settings?.kind === 'users') h += `<div class="pvb vl">${usersHtml(pv.settings)}</div>`;  else if (pv.settings) {
+  else if (pv.settings?.kind === 'users') h += `<div class="pvb vl">${usersHtml(pv.settings)}</div>`;
+  else if (pv.settings?.kind === 'systems') h += `<div class="pvb vl">${systemsHtml(pv.settings)}</div>`;
+  else if (pv.settings) {
     const s = pv.settings;
     h += '<div class="pvb vl">';
     if (s.kind === 'workspace' && me.role === 'admin') h += `<h3>Owner</h3><div class="sub">Only the owner and admins can see this workspace and its series.</div><div class="row2"><select id="wowner"><option value="">No owner (admins only)</option>${s.users.map(u => `<option value="${esc(u.email)}" ${u.email === s.owner ? 'selected' : ''}>${esc(u.name ?? u.email)} · ${esc(u.email)}</option>`).join('')}</select><button class="btn" data-act="saveowner">Save</button></div><hr>`;
-    if (s.kind === 'series') h += `<h3>Name</h3><input type="text" id="sname" value="${esc(s.name)}"><h3>Visibility</h3><div class="sub">Other series that can see this one</div>`
-      + ['*', ...s.others].map(n => `<label><input type="checkbox" value="${esc(n)}" ${s.chosen.includes(n) ? 'checked' : ''}> ${n === '*' ? 'All series' : esc(n)}</label>`).join('')
+    if (s.kind === 'series') h += `<h3>Name</h3><input type="text" id="sname" value="${esc(s.name)}">`
+      + `<h3>Tool use</h3><div class="sub">Systems the agent may use in a browser for this series. It signs in with the system's service account, and each write waits for a person to approve it.</div>`
+      + s.catalog.map(t => `<label><input type="checkbox" class="tool" value="${esc(t.id)}" ${s.tools.includes(t.id) ? 'checked' : ''}> ${esc(t.name)}${t.configured ? '' : ' <span class="sub">· not set up yet</span>'}</label>`).join('')
+      + (s.catalog.some(t => !t.configured) ? `<div class="sub">A system not set up yet can be chosen now; the agent can use it once ${me.role === 'admin' ? 'you add' : 'an admin adds'} its address and service account under Systems.</div>` : '')
+      + `<h3>Visibility</h3><div class="sub">Other series that can see this one</div>`
+      + ['*', ...s.others].map(n => `<label><input type="checkbox" class="vis" value="${esc(n)}" ${s.chosen.includes(n) ? 'checked' : ''}> ${n === '*' ? 'All series' : esc(n)}</label>`).join('')
       + (s.reads.length ? `<div class="sub">This series can see ${esc(s.reads.join(', '))}.</div>` : '')
       + '<div><button class="btn primary" data-act="savesettings">Save</button></div><hr>';
     h += `<h3>Archive</h3><div class="sub">${s.archived ? 'Archived: in the sidebar only under Show archived.' : `Hides the ${s.kind} from the sidebar, except under Show archived. Nothing in it changes.`}</div><div><button class="btn" data-act="archive">${s.archived ? 'Restore' : 'Archive'} ${s.kind}</button></div></div>`;
@@ -738,6 +767,31 @@ function usersHtml(s) {
 async function openWorkspaceSettings() {
   const w = tree.find(w => w.workspace === cur.workspace);
   pv = { title: 'Workspace settings', settings: { kind: 'workspace', archived: w.archived, owner: w.owner, users: me.role === 'admin' ? await api('/users') : [] } };
+  renderPv();
+}
+
+function systemsHtml(s) {
+  if (!s.edit) {
+    return `<div class="sub">Company systems the agent may use in a browser, with the service account it signs in as. Each series chooses its own under Tool use.</div>`
+      + `<table class="ut"><tr><th>System</th><th>Address</th><th>Service account</th><th></th></tr>`
+      + s.list.map(x => x.configured
+        ? `<tr><td><b>${esc(x.name)}</b></td><td class="sub">${esc(x.url)}</td><td>${esc(x.username)}${x.has_password ? '' : ' <span class="sub">(no password)</span>'}</td><td><button class="btn" data-act="editsys" data-id="${esc(x.id)}">Edit</button></td></tr>`
+        : `<tr><td><b>${esc(x.name)}</b></td><td class="sub">not set up yet</td><td class="sub">—</td><td><button class="btn" data-act="editsys" data-id="${esc(x.id)}">Set up</button></td></tr>`).join('')
+      + `</table><div><button class="btn" data-act="newsys">+ Add system</button></div>`;
+  }
+  const e = s.edit, f = (id, label, v = '', ph = '', type = 'text') => `<label style="display:grid;gap:4px">${label}<input type="${type}" id="${id}" value="${esc(v)}" placeholder="${esc(ph)}" autocomplete="off"></label>`;
+  return `<h3>${e.configured ? `Edit ${esc(e.name)}` : e.id ? `Set up ${esc(e.name)}` : 'Add a system'}</h3>`
+    + f('ys-name', 'Name', e.name, 'E1') + f('ys-url', 'Address', e.url, 'https://e1.example.com')
+    + f('ys-user', 'Service account', e.username, 'svc-rollforward') + f('ys-pass', 'Password', '', e.has_password ? 'Saved. Leave empty to keep it.' : '', 'password')
+    + `<h3>Writes</h3><div class="sub">Requests that count as writes, one a line, such as POST */save*. Empty: every request but GET. The agent's browser stops these until a person approves.</div><textarea id="ys-writes" rows="3">${esc((e.writes ?? []).join('\n'))}</textarea>`
+    + `<h3>Other addresses</h3><div class="sub">Hosts the sign-in passes through, such as a single sign-on page, one a line.</div><textarea id="ys-extra" rows="2">${esc((e.extra_origins ?? []).join('\n'))}</textarea>`
+    + `<h3>Sign-in page (optional)</h3><div class="sub">Selectors, if the server can't find the fields itself.</div>`
+    + f('ys-luser', 'User field', e.login?.user, 'input[name="username"]') + f('ys-lpass', 'Password field', e.login?.pass, 'input[type="password"]') + f('ys-lsubmit', 'Sign-in button', e.login?.submit, 'button[type="submit"]')
+    + `<div class="row2"><button class="btn primary" data-act="savesys">Save</button>${e.configured ? `<button class="btn" data-act="testsys">Test sign-in</button><button class="btn danger" data-act="delsys">${['e1', 'dms', 'xts'].includes(e.id) ? 'Clear' : 'Delete'}</button>` : ''}<button class="btn" data-act="systems" style="margin-left:auto">Back</button></div>`;
+}
+
+async function openSystems() {
+  pv = { title: 'Systems', settings: { kind: 'systems', list: await api('/systems') } };
   renderPv();
 }
 
@@ -807,9 +861,38 @@ document.addEventListener('click', async ev => {
   if (act === 'preview') await preview(el.dataset.file, data.doc.items.find(i => i.id === el.dataset.item));
   if (act === 'unpv') { pv = null; renderPv(); }
   if (act === 'settings') {
-    const w = tree.find(w => w.workspace === cur.workspace), s = w.series.find(s => s.series === cur.series);
-    pv = { title: 'Series settings', settings: { kind: 'series', name: s.series, others: w.series.map(x => x.series).filter(n => n !== s.series), chosen: s.visible_to, reads: s.reads, archived: s.archived } };
+    const w = tree.find(w => w.workspace === cur.workspace), s = w.series.find(s => s.series === cur.series), catalog = await api('/systems');
+    pv = { title: 'Series settings', settings: { kind: 'series', name: s.series, others: w.series.map(x => x.series).filter(n => n !== s.series), chosen: s.visible_to, tools: s.tools, catalog, reads: s.reads, archived: s.archived } };
     renderPv();
+  }
+  if (act === 'systems') await openSystems();
+  if (act === 'editsys' || act === 'newsys') { pv.settings.edit = act === 'newsys' ? {} : pv.settings.list.find(s => s.id === el.dataset.id); renderPv(); }
+  if (act === 'savesys') {
+    const e = pv.settings.edit, val = id => document.getElementById(id).value.trim();
+    const body = { name: val('ys-name'), url: val('ys-url'), username: val('ys-user'), writes: val('ys-writes'), extra_origins: val('ys-extra'),
+      login: { user: val('ys-luser'), pass: val('ys-lpass'), submit: val('ys-lsubmit') }, ...(val('ys-pass') && { password: document.getElementById('ys-pass').value }) };
+    await api(e.id ? `/systems/${enc(e.id)}` : '/systems', { method: e.id ? 'PUT' : 'POST', body: JSON.stringify(body) });
+    toast(`Saved ${body.name}`, 'ok');
+    await openSystems();
+  }
+  if (act === 'testsys') {
+    el.disabled = true;
+    try { toast(await api(`/systems/${enc(pv.settings.edit.id)}/test`, { method: 'POST' }), 'ok'); } finally { el.disabled = false; }
+  }
+  if (act === 'delsys') {
+    const e = pv.settings.edit;
+    const builtIn = ['e1', 'dms', 'xts'].includes(e.id);
+    if (!confirm(builtIn ? `Clear ${e.name}'s address and service account? It stays on the list, not set up, and agents can't use it until it's set up again.`
+      : `Delete ${e.name}? Series that use it can no longer reach it, and its service account is gone.`)) return;
+    await api(`/systems/${enc(e.id)}`, { method: 'DELETE' });
+    await openSystems();
+  }
+  if (act === 'approve' || act === 'reject') {
+    const r = pendingReqs().find(r => r.request === el.dataset.req);
+    if (act === 'approve' && !confirm(`Run this in ${r.name}?\n\n${r.description}\n\nThe server signs in with the service account and makes ${r.steps.length} step${r.steps.length > 1 ? 's' : ''} now.`)) return;
+    el.disabled = true;
+    await api(`${instPath()}/${act}`, { method: 'POST', body: JSON.stringify({ request: el.dataset.req }) }).finally(() => { el.disabled = false; });
+    await refresh();
   }
   if (act === 'workspace-settings') await openWorkspaceSettings();
   if (act === 'users') await openUsers();
@@ -843,8 +926,9 @@ document.addEventListener('click', async ev => {
   }
   if (act === 'savesettings') {
     const name = $('#sname').value.trim();
-    const visible_to = [...document.querySelectorAll('#pv input:checked')].map(i => i.value);
-    await api(seriesPath(cur), { method: 'PUT', body: JSON.stringify({ name, visible_to, archived: pv.settings.archived }) });
+    const visible_to = [...document.querySelectorAll('#pv input.vis:checked')].map(i => i.value);
+    const tools = [...document.querySelectorAll('#pv input.tool:checked')].map(i => i.value);
+    await api(seriesPath(cur), { method: 'PUT', body: JSON.stringify({ name, visible_to, tools, archived: pv.settings.archived }) });
     pv = null;
     renderPv();
     if (name !== cur.series) return go(cur.workspace, name, cur.label);

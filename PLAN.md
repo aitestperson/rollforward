@@ -9,6 +9,8 @@
 - **People:** everyone signs in with a Microsoft account, by pressing Sign in with Microsoft. A person is a **user** or an **admin**.
 - **Workspace:** a top-level folder of series, such as one client's or one team's. It has one **owner**: only the owner and admins see it, its series and their files. A workspace with no owner is the admins'. No run sees another workspace's files (enforced from M3).
 - **Series:** a recurring transform, such as "Weekly borrowing base": each instance's input files become its output files. The folder name is the series' name. What an instance should contain comes from earlier instances, not from a declaration.
+- **System:** a company system the agent may use in a browser. E1, DMS and XTS are built in; admins set each up with its address and a shared service account, and can add others.
+- **Tool use:** the systems a series' agent may use. Reading is free; each write waits for a person to approve it.
 - **Visibility:** a series can make itself visible to other series of the workspace, or to all of them. Their agents may then read it, never write it, and copy into their own `working/` what they rely on. Visibility is one way, and only the publishing series grants it.
 - **Archive:** a workspace or a series that's no longer in use can be archived. It leaves the sidebar, except under "Show archived", until it's restored, and nothing in it changes. It isn't transitive, but what a reader copies can flow on.
 - **Instance:** one pass through a series, under a label people choose, such as "2026-08-24" or "Larkfield refinancing". Instances needn't be periods. They sort alphabetically by label, and only open ones show by default.
@@ -46,19 +48,22 @@
 - **Abandon:** the other way an instance ends. It stays as it is, but it isn't an example, never becomes a new instance's starting point, and applies no defaults. It is also disabled while a run is going. Closed and abandoned instances both show under "Show closed".
 - **Duplicate:** a closed or abandoned instance can be copied, under a new label, into an open instance. The copy has its files, screen and log, but not its agent session, and its log records the copy as `duplicate`.
 - **Rename:** an open instance's label changes from the pencil by its title, between runs. The log records `rename`.
-- **Series settings:** the series' name, its visibility (the other series that can see it) and Archive. Renaming moves the series folder, and waits until no run is going. **Workspace settings** hold the owner (admins only) and Archive. An archived workspace or series is restored from its settings, under "Show archived".
+- **Series settings:** the series' name, its Tool use (the systems its agent may use), its visibility (the other series that can see it) and Archive. Renaming moves the series folder, and waits until no run is going. **Workspace settings** hold the owner (admins only) and Archive. An archived workspace or series is restored from its settings, under "Show archived".
 - **Users** (admins): who can sign in, their role, their workspaces and when they last signed in; Add, Disable, Sign out everywhere and Remove.
+- **Systems** (admins): the systems for Tool use, each with its address, service account (the password is write-only), which requests count as writes, other addresses its sign-in passes through, and optional sign-in selectors; Test sign-in and Delete.
+- **Write requests:** a write the agent proposes shows at the top of the instance, with its steps and a screenshot of the page it started from, and Approve and run or Reject. It counts in the sidebar's red dot. Close and Abandon reject what is still waiting.
 - **Names:** the log records each person by the email they signed in with. The sidebar's foot shows who is signed in, with Sign out.
 
 ## Storage
 
 Workspaces are folders on the host's disk. There is no database.
 
-    .rf/                      the server's own: users.json, workspaces.json (each workspace's owner) and session.key
+    .rf/                      the server's own: users.json, workspaces.json (each workspace's owner), systems.json
+                              (service passwords sealed with AES-256-GCM), and the keys session.key and systems.key
     <workspace>/              e.g. "Larkfield"
       .archived               there while the workspace is archived, set by people through the server
       <series>/               e.g. "Weekly borrowing base"; moved only by a rename in Series settings
-        series.json           {"visible_to": [series names, or "*"]}, set by people through the server, read-only
+        series.json           {"visible_to": [series names, or "*"], "tools": [system ids]}, set by people through the server, read-only
         .archived             there while the series is archived
         <label>/              an instance: a folder holding workspace.json, made by New instance
           upload/             people's files, as uploaded, read-only
@@ -66,6 +71,7 @@ Workspaces are folders on the host's disk. There is no database.
           workspace.json      the instance's screen, saved by the server, read-only
           log.jsonl           everything that happened in the instance, written by the server
           session/            the instance's Pi session, shown in Advanced
+          calls/              writes the agent proposed: the page it started from (<id>.png) and the outcome (<id>.result.png), by the server
 
 - **The server holds each instance's screen and log.** They needn't be files, but who owns what stays the same. The server saves the screen to `workspace.json` (a temporary file renamed into place, read-only) and appends each event to `log.jsonl`. Closed instances therefore stay plain folders.
 - **Who writes what:**
@@ -123,7 +129,7 @@ The schemas are loose, and unknown fields are ignored, so the agent and the UI c
       ]
     }
 
-**`log.jsonl`** has one line per event. `seq` orders the lines, and `by` is a person's name, "server" or "agent". The ops are `create`, `upload`, `point`, `item`, `note`, `unnote`, `remove`, `run`, `done`, `answer`, `steer`, `interrupt`, `close`, `abandon`, `duplicate`, `rename` and `reply`. `done` carries the run's model cost in USD. Here `point` means an item now shows a file:
+**`log.jsonl`** has one line per event. `seq` orders the lines, and `by` is a person's name, "server" or "agent". The ops are `create`, `upload`, `point`, `item`, `note`, `unnote`, `remove`, `run`, `done`, `answer`, `steer`, `interrupt`, `close`, `abandon`, `duplicate`, `rename`, `reply`, and for Tool use `browse` (one action of the agent's browser), `request` (a proposed write), `approve`, `reject` and `call` (the server making an approved write). `done` carries the run's model cost in USD. Here `point` means an item now shows a file:
 
     {"seq": 40, "at": "2026-08-24T15:02:00Z", "by": "alex", "op": "upload", "file": "upload/Larkfield AR aging 082426_2.xlsx", "pane": "in", "onto": null, "sha256": "9f2c…"}
     {"seq": 41, "at": "2026-08-24T15:02:00Z", "by": "server", "op": "point", "item": "u40", "file": "upload/Larkfield AR aging 082426_2.xlsx"}
@@ -139,7 +145,7 @@ The schemas are loose, and unknown fields are ignored, so the agent and the UI c
 
 - **One session per instance.** The server runs Pi in the series folder with the instructions in [prompt.md](prompt.md). Each run is one prompt into the instance's session, so within an instance the agent remembers its earlier runs. A new instance starts a new session, so whatever the next instance needs must be in the files.
 - **Messages:** every prompt and steer reads `Instance <label> (folder <label>/), run <n>. New log entries:`, followed by the log lines, as JSON, that the agent hasn't been sent. The agent's own lines are left out.
-- **What starts a run:** an upload, an answer or a Steer from a person, or a new instance whose parent had inputs the agent made (files in `working/`), so the fetched inputs arrive at once; its `create` entry carries `fetch`. Runs start 1.5 s after the last of a burst of uploads, so a multi-file drop starts one run.
+- **What starts a run:** an upload, an answer, a Steer, or an approval or rejection of a proposed write from a person, or a new instance whose parent had inputs the agent made (files in `working/`), so the fetched inputs arrive at once; its `create` entry carries `fetch`. Runs start 1.5 s after the last of a burst of uploads, so a multi-file drop starts one run.
   - **During a run,** the same events reach the agent as a steer. Pi delivers it after the current turn's tool calls, and with steering mode `all`, everything queued by then arrives together.
   - **Events for another instance of the series** wait for the current run to end.
 - **The cursor:** the runner records the highest log seq the agent has actually received, which it knows when Pi starts the user message that carried it. When a run settles and people's events lie above the cursor, another run starts at once. They can get there through a steer sent as the run ended, or one cleared by Interrupt. After an Interrupt, the next run waits for the next event.
@@ -156,12 +162,23 @@ The schemas are loose, and unknown fields are ignored, so the agent and the UI c
 - **The agent makes the call.** Nothing in the system checks or scores outputs. The agent decides whether its work is right, and writes checks as scripts in `working/` when it judges it needs them.
 - **Answers carry over.** Close logs the default of every unanswered question as an answer. The next instance's agent applies the answers given after the previous instance's last run, and folds standing rules into `process.md`.
 - **Reads sources, never writes them.** People usually bring the files. When a person points the agent to a source instead, such as a database or a mailbox folder, the agent reads it, saves what it read in `working/` as the input's file with a `source`, and keeps the fetch as a script that later instances rerun. It reads the series folder, and writes only to its instance's `working/` and, through `rf`, its workspace.
-  - People remain the executor: they post the entries and send the certificates.
-  - Real systems and their credentials wait for the sandbox (M3).
+  - People remain the executor: they post the entries and send the certificates. The systems in a series' Tool use are the exception: there the agent may write, but only what a person approves, step by step (see Tool use).
   - On the host, these limits rest on the instructions alone; M3 enforces them with a sandbox.
 - **History is the memory.** Rather than keep a standing script library, the agent copies and adapts the most recently closed instance's scripts. Each instance's `working/` is then a complete record of how its outputs were made. Nothing else is carried between instances.
 - **One run at a time per series,** with a time limit (2 hours; `RF_LIMIT_MIN`).
 - **Model:** one, set in the runner (`RF_MODEL`, default `openrouter/anthropic/claude-opus-5.5`, thinking `high`). Choosing a model per series comes later.
+
+## Tool use: the agent's browser
+
+The agent uses company systems through a browser the server runs ([src/browser.ts](src/browser.ts), with Playwright and headless Chromium), never one of its own.
+
+- **The catalog** ([src/systems.ts](src/systems.ts)) is the admins': each system's address, its shared service account, `writes` (patterns such as `POST */save*` for the requests that count as writes; with none, every request but GET, HEAD and OPTIONS) and `extra_origins` (hosts its sign-in passes through). The password is sealed in `.rf/systems.json` and never leaves the server: pages show only whether one is saved.
+- **E1, DMS and XTS are built in:** Tool use always offers them, and admins set each one up (its address and service account) from its row under Systems; Clear takes it back to not set up. Admins can add other systems beside them.
+- **A series chooses** its systems in Tool use (`series.json` `tools`), possibly none, and possibly one not set up yet. Each run's message names the ones set up, `Systems you can use: E1 (rf browse e1, https://…)`, and the ones chosen but not set up yet, which the agent can't use.
+- **One browser context per run and system,** made on the agent's first `rf browse` to it and closed when the run ends. The server signs in first, by filling the sign-in form itself (the password field, the field before it and Enter, unless the system names selectors), so the agent arrives signed in. The context reaches only the system's own hosts.
+- **The agent's actions:** `open`, `look` (the page's text and its elements, numbered, each with a selector that finds it again), `click`, `type`, `select`, `press`, `back`, `download` (into `working/`) and `screenshot`. There is no way to run script in the page, and look never shows a password field's value; typing into one is refused. Each action is logged as `browse`, and a run may take 500.
+- **Writes:** every request that counts as a write is stopped, and the agent is told to propose it. `rf browse SYSTEM propose "WHAT" STEPS` gives a start page and up to 50 steps (`click`, `type`, `select`, `check`, `press`, each with a selector from look). The server logs a `request` with a screenshot of the page the agent was on, and nothing is sent. A person sees it at the top of the instance; on Approve the server signs in afresh in a context of its own, opens the start page and makes the steps with writes let through for them alone, then logs a `call` with whether it worked, the page's text and a screenshot. Reject logs `reject`. Either starts a run, so the agent hears. Close and Abandon reject what is waiting.
+- **Limits:** what counts as a write is a matter of each system's requests. Some systems post their reads too, so their admins narrow `writes` to the requests that change things.
 
 ## Harness: Pi over RPC
 
@@ -277,6 +294,8 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
 
 25. **The graph** (17 Oct): the screen shows the process as a graph of inputs, steps and outputs, with Outputs in their own column so they never scroll away. What each item is made from is a hint for people: nothing runs it, and the agent needn't follow it. Drops are hints too, and the page doesn't show `process.md`, which points at the agent's scripts.
 26. **Sign in with Microsoft, and workspaces per person** (20 Oct): one button, and people type nothing. Until the organisation registers an app in Entra ID, the button leads to two fixed demo accounts; once it's configured, the same button goes to Microsoft. The server runs the sign-in itself rather than through a proxy, so it knows who is who for ownership and the log. Each workspace has one owner; others don't see it; admins see and manage everything.
+27. **Tool use through a browser** (20 Oct): a series picks company systems, such as E1, DMS and XTS, from a catalog the admins keep, and its agent uses them in a browser the server runs, as a shared service account whose password stays with the server. Reading is free; each write waits for a person, who sees its steps and a screenshot, and the server makes it. E1, DMS and XTS are built in, so a series can choose them, or none, before they're set up.
+
 ## Proposed by the agent (open to change)
 
 1. People answer questions by clicking an option. If none fits, they fix the file and drop it back.
