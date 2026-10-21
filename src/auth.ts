@@ -1,12 +1,13 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, createPublicKey, randomBytes, timingSafeEqual, verify } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { resolve } from 'node:path';
 import { HttpError } from './store.ts';
 import { forgetOwners, initSystem, key, readJson, writeJson } from './system.ts';
 
-// Sign-in with a Microsoft account. People press "Sign in with Microsoft" and type nothing. With RF_OIDC_ISSUER and the app's id and
-// secret set, the button goes to Microsoft Entra ID (OpenID Connect, code flow with PKCE). Without them it goes to a demo account
-// picker that offers the two demo accounts below, so keep a demo on localhost.
+// Sign-in with a Microsoft account. People press "Sign in with Microsoft" and type nothing. With RF_OIDC_ISSUER and the app's id set,
+// the button goes to Microsoft Entra ID (OpenID Connect, code flow with PKCE): the server redeems the code, with the app's secret if it
+// has one, or, for an app registered as a Single-page application (RF_OIDC_SPA=1), the browser does and the server checks the token's
+// signature. Without them it goes to a demo account picker that offers the two demo accounts below, so keep a demo on localhost.
 
 export type Role = 'admin' | 'user';
 export type User = { name?: string; role: Role; disabled?: boolean; sub?: string; epoch?: number; created?: string; last_login?: string };
@@ -21,7 +22,14 @@ const env = process.env;
 const oidc = {
   issuer: env.RF_OIDC_ISSUER?.replace(/\/$/, ''), clientId: env.RF_OIDC_CLIENT_ID ?? '', clientSecret: env.RF_OIDC_CLIENT_SECRET ?? '',
   scopes: env.RF_OIDC_SCOPES ?? 'openid profile email', publicUrl: (env.RF_PUBLIC_URL ?? '').replace(/\/$/, ''),
+  // Where Microsoft sends people back, exactly as the app registers it. Without a client secret the app is a public client, and the
+  // code is redeemed with its PKCE verifier alone.
+  redirect: '',
 };
+oidc.redirect = env.RF_OIDC_REDIRECT_URI ?? `${oidc.publicUrl}/auth/callback`;
+// The app registers its redirect as a Single-page application: Microsoft then lets only a browser redeem the code (see redeemInBrowser).
+const spa = env.RF_OIDC_SPA === '1';
+const redirectPath = URL.canParse(oidc.redirect) ? new URL(oidc.redirect).pathname : '/auth/callback';
 export const mode: 'microsoft' | 'demo' = oidc.issuer ? 'microsoft' : 'demo';
 const admins = new Set([...(env.RF_ADMINS ?? '').split(','), ...(mode === 'demo' ? DEMO_ACCOUNTS.filter(a => a.role === 'admin').map(a => a.email) : [])].map(s => s.trim().toLowerCase()).filter(Boolean));
 const domains = (env.RF_ALLOWED_DOMAINS ?? '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
@@ -92,8 +100,10 @@ function admit(res: ServerResponse, email: string, name: string | undefined, sub
 
 const LOGO = '<svg width="20" height="20" viewBox="0 0 21 21" aria-hidden="true"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>';
 const STYLE = `<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<style>body { margin: 0; font: 15px/1.5 "IBM Plex Sans", system-ui, sans-serif; color: #15181d; background: #f6f7f8; }
-.box { max-width: 380px; margin: 14vh auto 0; padding: 32px 28px; background: #fff; border: 1px solid #e3e6ea; border-radius: 8px; }
+<style>* { box-sizing: border-box; }
+body { margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: 16px; font: 15px/1.5 "IBM Plex Sans", system-ui, sans-serif; color: #15181d; background: #f6f7f8; }
+.box { width: min(400px, 100%); padding: 32px 28px; background: #fff; border: 1px solid #e3e6ea; border-radius: 8px; box-shadow: 0 2px 8px rgba(21,24,29,.04); }
+.box p { overflow-wrap: anywhere; }
 h1 { font-size: 22px; font-weight: 600; margin: 0 0 6px; } p { margin: 0 0 22px; color: #474e5b; font-size: 14px; } .bad { color: #b42318; }
 .ms { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; padding: 11px 12px; font: 600 15px "Segoe UI", "IBM Plex Sans", sans-serif;
   color: #5e5e5e; background: #fff; border: 1px solid #8c8c8c; border-radius: 2px; text-decoration: none; cursor: pointer; }
@@ -106,7 +116,8 @@ h1 { font-size: 22px; font-weight: 600; margin: 0 0 6px; } p { margin: 0 0 22px;
 function page(res: ServerResponse, status: number, text: string) {
   res.writeHead(status, { 'content-type': 'text/html; charset=utf-8' });
   res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>rollforward</title>${STYLE}
-<div class="box"><h1>rollforward</h1><p class="bad">${esc(text)}</p><a class="ms" href="/auth/login">${LOGO}Sign in with Microsoft</a></div>`);
+<div class="box"><h1>rollforward</h1><p class="bad">${esc(text)}</p><a class="ms" href="/auth/login">${LOGO}Sign in with Microsoft</a></div>
+<script>history.replaceState(null, '', '/')</script>`);
 }
 
 function signInPage(res: ServerResponse, next: string) {
@@ -123,10 +134,10 @@ function demoPicker(res: ServerResponse, next: string) {
 <div class="box"><div class="brand">${LOGO}Microsoft</div><h1>Pick an account</h1><p>to continue to rollforward</p>
 <form method="post" action="/auth/demo"><input type="hidden" name="next" value="${esc(next)}">
 ${DEMO_ACCOUNTS.map(a => `<button class="acct" name="email" value="${esc(a.email)}"><span class="av">${esc(a.name[0])}</span><span><b>${esc(a.name)}</b><small>${esc(a.email)} · ${a.role}</small></span></button>`).join('')}
-</form><p class="note">Demo accounts. Set RF_OIDC_ISSUER, RF_OIDC_CLIENT_ID and RF_OIDC_CLIENT_SECRET to sign in with real Microsoft accounts instead.</p></div>`);
+</form><p class="note">Demo accounts. Set RF_OIDC_ISSUER and RF_OIDC_CLIENT_ID (see .env.example) to sign in with real Microsoft accounts instead.</p></div>`);
 }
 
-let discovered: { issuer: string; authorization_endpoint: string; token_endpoint: string; end_session_endpoint?: string } | undefined;
+let discovered: { issuer: string; authorization_endpoint: string; token_endpoint: string; jwks_uri?: string; end_session_endpoint?: string } | undefined;
 
 async function discovery() {
   if (discovered) return discovered;
@@ -147,37 +158,108 @@ async function microsoft(res: ServerResponse, next: string) {
   const pending = b64(JSON.stringify({ state, nonce, verifier, next, exp: Date.now() + 600_000 }));
   const to = new URL(d.authorization_endpoint);
   for (const [k, v] of Object.entries({
-    response_type: 'code', client_id: oidc.clientId, redirect_uri: `${oidc.publicUrl}/auth/callback`, scope: oidc.scopes, state, nonce,
+    response_type: 'code', client_id: oidc.clientId, redirect_uri: oidc.redirect, scope: oidc.scopes, state, nonce,
     code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', prompt: 'select_account',
   })) to.searchParams.set(k, v);
-  res.writeHead(302, { location: to.href, 'set-cookie': cookie(pendingCookie(state), `${pending}.${mac(pending)}`, 600, '/auth') });
+  res.writeHead(302, { location: to.href, 'set-cookie': cookie(pendingCookie(state), `${pending}.${mac(pending)}`, 600) });
   res.end();
 }
 
-async function callback(req: IncomingMessage, res: ServerResponse, url: URL) {
-  const state = url.searchParams.get('state') ?? '';
+type Pending = { state: string; nonce: string; verifier: string; next: string; exp: number };
+
+// The sign-in this browser started under `state`, if it is still good.
+function pendingOf(req: IncomingMessage, state: string): Pending | undefined {
   const [pending = '', sig = ''] = (/^[\w-]+$/.test(state) ? cookies(req)[pendingCookie(state)] ?? '' : '').split('.');
   const p = pending && same(sig, mac(pending)) ? JSON.parse(unb64(pending)) : undefined;
-  if (!p || p.exp < Date.now() || p.state !== state) {
-    // Already signed in, as after going back to this address or finishing in another tab: carry on rather than complain.
-    if (session(req)) return void res.writeHead(302, { location: '/' }).end();
-    return page(res, 400, 'The sign-in took too long or came from another browser. Try again.');
-  }
-  if (url.searchParams.get('error')) return page(res, 401, `Microsoft refused: ${url.searchParams.get('error_description') ?? url.searchParams.get('error')}`);
-  const d = await discovery();
-  const r = await fetch(d.token_endpoint, {
-    method: 'POST', signal: AbortSignal.timeout(15_000),
-    body: new URLSearchParams({ grant_type: 'authorization_code', code: url.searchParams.get('code') ?? '', redirect_uri: `${oidc.publicUrl}/auth/callback`, client_id: oidc.clientId, client_secret: oidc.clientSecret, code_verifier: p.verifier }),
-  });
-  const t = await r.json().catch(() => ({}));
-  if (!r.ok || !t.id_token) return page(res, 401, `Microsoft did not sign you in: ${t.error_description ?? t.error ?? r.status}`);
-  const claims = JSON.parse(unb64(t.id_token.split('.')[1]));
-  const aud = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+  return p && p.exp > Date.now() && p.state === state ? p : undefined;
+}
+
+function expired(req: IncomingMessage, res: ServerResponse) {
+  // Already signed in, as after going back to this address or finishing in another tab: carry on rather than complain.
+  if (session(req)) return void res.writeHead(302, { location: '/' }).end();
+  page(res, 400, 'The sign-in took too long or came from another browser. Try again.');
+}
+
+// Checks an ID token's claims against this sign-in, then lets its person in.
+async function finishSignIn(res: ServerResponse, claims: any, p: Pending) {
+  const d = await discovery(), aud = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
   if (claims.iss !== d.issuer || !aud.includes(oidc.clientId) || !(claims.exp * 1000 > Date.now()) || claims.nonce !== p.nonce) return page(res, 401, 'The sign-in token did not check out.');
   const email = String(claims.email ?? claims.preferred_username ?? claims.upn ?? '').toLowerCase();
   if (!email.includes('@')) return page(res, 403, 'Your account has no email address.');
   if (domains.length && !domains.includes(email.split('@')[1])) return page(res, 403, `${email} is not in an allowed domain.`);
-  admit(res, email, claims.name, claims.sub, p.next, [cookie(pendingCookie(state), '', 0, '/auth')]);
+  admit(res, email, claims.name, claims.sub, p.next, [cookie(pendingCookie(p.state), '', 0)]);
+}
+
+async function callback(req: IncomingMessage, res: ServerResponse, url: URL) {
+  const p = pendingOf(req, url.searchParams.get('state') ?? '');
+  if (!p) return expired(req, res);
+  if (url.searchParams.get('error')) return page(res, 401, `Microsoft refused: ${url.searchParams.get('error_description') ?? url.searchParams.get('error')}`);
+  const d = await discovery();
+  if (spa) return redeemInBrowser(res, url.searchParams.get('code') ?? '', p, d.token_endpoint);
+  const r = await fetch(d.token_endpoint, {
+    method: 'POST', signal: AbortSignal.timeout(15_000),
+    body: new URLSearchParams({
+      grant_type: 'authorization_code', code: url.searchParams.get('code') ?? '', redirect_uri: oidc.redirect, client_id: oidc.clientId, code_verifier: p.verifier,
+      ...(oidc.clientSecret && { client_secret: oidc.clientSecret }),
+    }),
+  });
+  const t = await r.json().catch(() => ({}));
+  if (!r.ok || !t.id_token) return page(res, 401, `Microsoft did not sign you in: ${t.error_description ?? t.error ?? r.status}`);
+  // Straight from the token endpoint over TLS, so the token's signature needn't be checked (OpenID Connect Core 3.1.3.7).
+  await finishSignIn(res, JSON.parse(unb64(t.id_token.split('.')[1])), p);
+}
+
+// An app registered as a Single-page application lets only a browser redeem its codes, by a cross-origin request. So the server
+// hands the browser the code and this sign-in's PKCE verifier; the page redeems them and posts the ID token back to /auth/token.
+function redeemInBrowser(res: ServerResponse, code: string, p: Pending, tokenEndpoint: string) {
+  const js = (v: unknown) => JSON.stringify(v).replace(/</g, '\\u003c');
+  const form = { grant_type: 'authorization_code', code, redirect_uri: oidc.redirect, client_id: oidc.clientId, code_verifier: p.verifier, scope: oidc.scopes };
+  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
+  res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Signing in · rollforward</title>${STYLE}
+<div class="box"><h1>rollforward</h1><p id="m">Signing you in…</p></div>
+<form id="f" method="post" action="/auth/token"><input type="hidden" name="state" value="${esc(p.state)}"><input type="hidden" name="id_token"></form>
+<script>
+history.replaceState(null, '', '/');
+const fail = text => { document.getElementById('m').className = 'bad'; document.getElementById('m').textContent = 'Microsoft did not sign you in: ' + text; document.querySelector('.box').insertAdjacentHTML('beforeend', '<a class="ms" href="/auth/login">Sign in again</a>'); };
+fetch(${js(tokenEndpoint)}, { method: 'POST', body: new URLSearchParams(${js(form)}) })
+  .then(r => r.json().then(t => {
+    if (!t.id_token) return fail(t.error_description || t.error || r.status);
+    const f = document.getElementById('f');
+    f.id_token.value = t.id_token;
+    f.submit();
+  }))
+  .catch(e => fail(String(e)));
+</script>`);
+}
+
+let keys: { kid: string; kty: string; n: string; e: string }[] = [];
+
+// Checks an RS256 ID token's signature against the provider's published keys, fetching them again once for a key it doesn't know.
+async function verified(token: string): Promise<any> {
+  const [h, payload, sig] = token.split('.'), header = JSON.parse(unb64(h ?? ''));
+  if (header.alg !== 'RS256' || !payload || !sig) throw new HttpError(401, 'The sign-in token is not signed the way Microsoft signs.');
+  const d = await discovery();
+  for (let fresh = false; ; fresh = true) {
+    if (fresh || !keys.length) {
+      const r = await fetch(d.jwks_uri!, { signal: AbortSignal.timeout(15_000) });
+      keys = r.ok ? (await r.json()).keys ?? [] : [];
+    }
+    const k = keys.find(k => k.kid === header.kid);
+    if (k) {
+      const ok = verify('RSA-SHA256', Buffer.from(`${h}.${payload}`), createPublicKey({ key: { kty: k.kty, n: k.n, e: k.e }, format: 'jwk' }), Buffer.from(sig, 'base64url'));
+      if (!ok) throw new HttpError(401, 'The sign-in token\'s signature did not check out.');
+      return JSON.parse(unb64(payload));
+    }
+    if (fresh) throw new HttpError(401, 'The sign-in token was signed with a key Microsoft does not publish.');
+  }
+}
+
+// The ID token a browser redeemed, posted back with its sign-in's state.
+async function tokenFromBrowser(req: IncomingMessage, res: ServerResponse) {
+  const form = new URLSearchParams(Buffer.concat(await Array.fromAsync(req as AsyncIterable<Buffer>)).toString());
+  const p = pendingOf(req, form.get('state') ?? '');
+  if (!p) return expired(req, res);
+  await finishSignIn(res, await verified(form.get('id_token') ?? ''), p);
 }
 
 const nextOf = (url: URL | URLSearchParams) => {
@@ -197,7 +279,10 @@ export async function authenticate(req: IncomingMessage, res: ServerResponse, ur
     const account = DEMO_ACCOUNTS.find(a => a.email === form.get('email'));
     if (!account) return page(res, 400, 'Pick one of the demo accounts.'), null;
     admit(res, account.email, account.name, undefined, nextOf(form));
-  } else if (url.pathname === '/auth/callback' && mode === 'microsoft') await callback(req, res, url);
+  } else if (mode === 'microsoft' && url.pathname === redirectPath && url.searchParams.has('state') && (url.searchParams.has('code') || url.searchParams.has('error'))) {
+    // Microsoft's return, which may be the site's own root if that is what the app registers.
+    await callback(req, res, url);
+  } else if (mode === 'microsoft' && spa && url.pathname === '/auth/token' && req.method === 'POST') await tokenFromBrowser(req, res);
   else if (url.pathname === '/auth/logout' && req.method === 'POST') {
     const end = mode === 'microsoft' ? (await discovery().catch(() => undefined))?.end_session_endpoint : undefined;
     res.writeHead(200, { 'content-type': 'application/json', 'set-cookie': cookie('rf_session', '', 0) });
@@ -212,7 +297,7 @@ export async function authenticate(req: IncomingMessage, res: ServerResponse, ur
 }
 
 export function checkConfig(host: string) {
-  if (mode === 'microsoft' && (!oidc.clientId || !oidc.clientSecret || !oidc.publicUrl)) throw new Error('RF_OIDC_ISSUER needs RF_OIDC_CLIENT_ID, RF_OIDC_CLIENT_SECRET and RF_PUBLIC_URL');
+  if (mode === 'microsoft' && (!oidc.clientId || !oidc.publicUrl || !URL.canParse(oidc.redirect))) throw new Error('RF_OIDC_ISSUER needs RF_OIDC_CLIENT_ID and RF_PUBLIC_URL (and RF_OIDC_CLIENT_SECRET unless the app is a public client)');
   if (mode === 'demo' && !['127.0.0.1', 'localhost', '::1'].includes(host)) console.warn(`Demo sign-in: anyone who reaches ${host} can sign in as a demo admin. Set RF_OIDC_ISSUER for Microsoft accounts.`);
 }
 

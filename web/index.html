@@ -46,6 +46,10 @@ a { color: inherit; }
 .vl input[type=text] { font: inherit; padding: 7px 9px; border: 1px solid var(--rule-2); border-radius: var(--r1); }
 .pv.small { inset: 12vh auto auto 50%; transform: translateX(-50%); width: min(420px, 92vw); max-height: 80dvh; }
 .vl label { display: flex; align-items: center; gap: 8px; }
+.vis-all { display: flex; align-items: center; gap: 2px; margin-left: -6px; }
+.twisty { all: unset; flex: none; width: 20px; height: 20px; display: grid; place-items: center; border-radius: var(--r1); color: var(--ink-2); font-size: 15px; cursor: pointer; }
+button.twisty:hover { background: var(--rule); color: var(--ink); }
+.vis-list { display: grid; gap: 8px; margin-left: 7px; padding: 2px 0 2px 19px; border-left: 1px solid var(--rule-2); }
 .vl textarea { font: 12.5px/1.5 var(--mono); padding: 7px 9px; border: 1px solid var(--rule-2); border-radius: var(--r1); resize: vertical; min-height: 4.5em; }
 .vl :is(input[type=email], input[type=password], select) { font: inherit; padding: 7px 9px; border: 1px solid var(--rule-2); border-radius: var(--r1); background: var(--sheet); min-width: 0; max-width: 100%; }
 .vl .row2 { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -88,7 +92,13 @@ a { color: inherit; }
 .btn.sel { background: var(--paper); box-shadow: inset 0 1px 2px rgba(0,0,0,.08); }
 
 .panes { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr); position: relative; padding-bottom: 46px; }
-.pane { padding: 22px 28px 20px; display: flex; flex-direction: column; position: relative; overflow: auto; min-width: 0; }
+.pane { padding: 22px 28px 20px; display: flex; flex-direction: column; position: relative; overflow: auto; min-width: 0; scrollbar-gutter: stable; }
+/* Always-visible scrollbars, so a long list of inputs or outputs shows it goes on (Edge's overlay scrollbars hide until hovered). */
+.pane::-webkit-scrollbar { width: 10px; height: 10px; }
+.pane::-webkit-scrollbar-track { background: var(--rule); }
+.pane::-webkit-scrollbar-thumb { background: var(--edge); border: 2px solid var(--rule); border-radius: 6px; }
+.pane::-webkit-scrollbar-thumb:hover { background: var(--ink-3); }
+@supports not selector(::-webkit-scrollbar) { .pane { scrollbar-width: thin; scrollbar-color: var(--edge) var(--rule); } }
 .flow { grid-area: 1 / 1; }
 .outs { grid-area: 1 / 2; overflow: hidden auto; border-left: 1px solid var(--rule); }
 .cols { display: flex; gap: 64px; align-items: start; }
@@ -103,7 +113,9 @@ a { color: inherit; }
 .pane.drag::after { content: '+ Add'; position: absolute; top: 20px; right: 28px; font-weight: 600; color: var(--person); }
 .pane.drag .ph .btn { visibility: hidden; }
 .pane.drag { background: var(--person-bg); }
-.ph { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; min-height: 26px; margin-bottom: 4px; }
+/* A pane's heading, with + Add files, stays in view while its tiles scroll under it. */
+.ph { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; min-height: 26px; margin: -22px 0 4px; padding: 22px 0 6px; position: sticky; top: -22px; z-index: 4; background: var(--paper); }
+.pane.drag .ph { background: var(--person-bg); }
 .ph h2 { margin: 0; font-size: 15px; font-weight: 600; }
 .ph .c { font-size: 13px; color: var(--ink-3); }
 .ph .btn { margin-left: auto; padding: 4px 10px; font-size: 12px; }
@@ -237,6 +249,7 @@ a[data-act=preview], a[data-act=opencard] { text-decoration: underline; cursor: 
   .bar .btn.top { padding: 6px 9px; font-size: 12px; }
   .panes { display: block; overflow: auto; padding-bottom: 60px; }
   .pane { padding: 16px 14px; overflow: clip; }
+  .ph { position: static; margin: 0 0 4px; padding: 0; background: none; }
   .outs { border-left: 0; border-bottom: 1px solid var(--rule); }
   .cols { display: block; }
   .col { width: auto; grid-template-columns: repeat(2, 1fr); }
@@ -740,8 +753,7 @@ function renderPv() {
       + `<h3>Tool use</h3><div class="sub">Systems the agent may use in a browser for this series. It signs in with the system's service account, and each write waits for a person to approve it.</div>`
       + s.catalog.map(t => `<label><input type="checkbox" class="tool" value="${esc(t.id)}" ${s.tools.includes(t.id) ? 'checked' : ''}> ${esc(t.name)}${t.configured ? '' : ' <span class="sub">· not set up yet</span>'}</label>`).join('')
       + (s.catalog.some(t => !t.configured) ? `<div class="sub">A system not set up yet can be chosen now; the agent can use it once ${me.role === 'admin' ? 'you add' : 'an admin adds'} its address and service account under Systems.</div>` : '')
-      + `<h3>Visibility</h3><div class="sub">Other series that can see this one</div>`
-      + ['*', ...s.others].map(n => `<label><input type="checkbox" class="vis" value="${esc(n)}" ${s.chosen.includes(n) ? 'checked' : ''}> ${n === '*' ? 'All series' : esc(n)}</label>`).join('')
+      + `<h3>Visibility</h3><div class="sub">Other series that can see this one</div>` + visibilityHtml(s)
       + (s.reads.length ? `<div class="sub">This series can see ${esc(s.reads.join(', '))}.</div>` : '')
       + '<div><button class="btn primary" data-act="savesettings">Save</button></div><hr>';
     h += `<h3>Archive</h3><div class="sub">${s.archived ? 'Archived: in the sidebar only under Show archived.' : `Hides the ${s.kind} from the sidebar, except under Show archived. Nothing in it changes.`}</div><div><button class="btn" data-act="archive">${s.archived ? 'Restore' : 'Archive'} ${s.kind}</button></div></div>`;
@@ -749,6 +761,28 @@ function renderPv() {
   else if (pv.loading) h += `<div class="pvb"><div class="empty">Loading…</div></div>`;
   else h += `<div class="pvb"><div class="empty">No preview for this kind of file. Download it instead.</div></div>`;
   $('#pv').innerHTML = h + '<div class="pvn" id="pvn"></div>';
+  if (pv.settings?.kind === 'series') syncVisibility();
+}
+
+// Visibility: All series, with the other series one level under it, folded unless only some of them are chosen. All series ticked
+// saves as "*", which takes in series made later too; otherwise the series ticked are saved one by one.
+function visibilityHtml(s) {
+  const all = s.chosen.includes('*'), picked = n => all || s.chosen.includes(n);
+  s.open ??= !all && s.others.some(picked);
+  return `<div class="vis-all">${s.others.length ? `<button class="twisty" data-act="vis-fold" title="${s.open ? 'Hide' : 'Show'} the series" aria-expanded="${s.open}">${s.open ? '▾' : '▸'}</button>` : '<span class="twisty"></span>'}`
+    + `<label><input type="checkbox" id="vis-all" ${all ? 'checked' : ''}> All series <span class="sub" id="vis-count"></span></label></div>`
+    + `<div class="vis-list" id="vis-list" ${s.open ? '' : 'hidden'}>${s.others.map(n => `<label><input type="checkbox" class="vis" value="${esc(n)}" ${picked(n) ? 'checked' : ''}> ${esc(n)}</label>`).join('')}</div>`;
+}
+
+// Keeps All series in step with the series under it: ticked when all are, half-ticked when some are.
+function syncVisibility() {
+  const top = $('#vis-all'), kids = [...document.querySelectorAll('#pv input.vis')], n = kids.filter(k => k.checked).length;
+  if (!top) return;
+  if (kids.length) {
+    top.checked = n === kids.length;
+    top.indeterminate = n > 0 && n < kids.length;
+  }
+  $('#vis-count').textContent = top.checked ? '· also series made later' : kids.length ? `· ${n} of ${kids.length}` : '· none yet';
 }
 
 function usersHtml(s) {
@@ -759,7 +793,7 @@ function usersHtml(s) {
     h += `<tr><td>${esc(u.name ?? '')}<div class="sub">${esc(u.email)}${u.disabled ? ' · disabled' : ''}</div></td>`
       + `<td><select data-act="role" data-email="${esc(u.email)}" ${self ? 'disabled' : ''}><option value="user">User</option><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option></select></td>`
       + `<td>${esc(u.workspaces.join(', ')) || '<span class="sub">none</span>'}</td><td class="sub">${esc(when(u.last_login))}</td>`
-      + `<td>${self ? '' : `<div class="row2"><button class="btn" data-act="disable" data-email="${esc(u.email)}" data-on="${u.disabled ? '' : '1'}">${u.disabled ? 'Enable' : 'Disable'}</button><button class="btn" data-act="signoff" data-email="${esc(u.email)}">Sign out</button><button class="btn danger" data-act="deluser" data-email="${esc(u.email)}">Remove</button></div>`}</td></tr>`;
+      + `<td>${self ? '' : `<div class="row2"><button class="btn" data-act="disable" data-email="${esc(u.email)}" data-on="${u.disabled ? '' : '1'}">${u.disabled ? 'Enable' : 'Disable'}</button><button class="btn danger" data-act="deluser" data-email="${esc(u.email)}">Remove</button></div>`}</td></tr>`;
   }
   return h + `</table><h3>Add someone</h3><div class="sub">They can then sign in. Give them a workspace from its settings.</div><div class="row2"><input type="email" id="uemail" placeholder="name@example.com" style="flex:1"><select id="urole"><option value="user">User</option><option value="admin">Admin</option></select><button class="btn primary" data-act="adduser">Add</button></div>`;
 }
@@ -865,6 +899,13 @@ document.addEventListener('click', async ev => {
     pv = { title: 'Series settings', settings: { kind: 'series', name: s.series, others: w.series.map(x => x.series).filter(n => n !== s.series), chosen: s.visible_to, tools: s.tools, catalog, reads: s.reads, archived: s.archived } };
     renderPv();
   }
+  if (act === 'vis-fold') {
+    const open = pv.settings.open = !pv.settings.open;
+    $('#vis-list').hidden = !open;
+    el.textContent = open ? '▾' : '▸';
+    el.title = `${open ? 'Hide' : 'Show'} the series`;
+    el.setAttribute('aria-expanded', open);
+  }
   if (act === 'systems') await openSystems();
   if (act === 'editsys' || act === 'newsys') { pv.settings.edit = act === 'newsys' ? {} : pv.settings.list.find(s => s.id === el.dataset.id); renderPv(); }
   if (act === 'savesys') {
@@ -907,9 +948,9 @@ document.addEventListener('click', async ev => {
     await api('/users', { method: 'POST', body: JSON.stringify({ email: $('#uemail').value.trim(), role: $('#urole').value }) });
     await openUsers();
   }
-  if (act === 'disable' || act === 'signoff') {
-    await api(`/users/${enc(el.dataset.email)}`, { method: 'PUT', body: JSON.stringify(act === 'disable' ? { disabled: !!el.dataset.on } : { signout: true }) });
-    toast(act === 'signoff' ? `${el.dataset.email} is signed out everywhere` : 'Saved', 'ok');
+  if (act === 'disable') {
+    await api(`/users/${enc(el.dataset.email)}`, { method: 'PUT', body: JSON.stringify({ disabled: !!el.dataset.on }) });
+    toast(el.dataset.on ? `${el.dataset.email} is disabled and signed out` : `${el.dataset.email} can sign in again`, 'ok');
     await openUsers();
   }
   if (act === 'deluser') {
@@ -926,7 +967,7 @@ document.addEventListener('click', async ev => {
   }
   if (act === 'savesettings') {
     const name = $('#sname').value.trim();
-    const visible_to = [...document.querySelectorAll('#pv input.vis:checked')].map(i => i.value);
+    const visible_to = $('#vis-all').checked ? ['*'] : [...document.querySelectorAll('#pv input.vis:checked')].map(i => i.value);
     const tools = [...document.querySelectorAll('#pv input.tool:checked')].map(i => i.value);
     await api(seriesPath(cur), { method: 'PUT', body: JSON.stringify({ name, visible_to, tools, archived: pv.settings.archived }) });
     pv = null;
@@ -1002,6 +1043,11 @@ document.addEventListener('click', async ev => {
 
 $('#picker').addEventListener('change', e => upload([...e.target.files], e.target.dataset.pane, e.target.dataset.onto));
 $('#pv').addEventListener('change', async e => {
+  if (e.target.id === 'vis-all') {
+    for (const k of document.querySelectorAll('#pv input.vis')) k.checked = e.target.checked;
+    return syncVisibility();
+  }
+  if (e.target.matches('input.vis')) return syncVisibility();
   if (!e.target.matches('select[data-act=role]')) return;
   await api(`/users/${enc(e.target.dataset.email)}`, { method: 'PUT', body: JSON.stringify({ role: e.target.value }) }).catch(() => {});
   await openUsers();
