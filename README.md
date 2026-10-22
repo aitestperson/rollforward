@@ -7,7 +7,9 @@ Recurring tasks, files in and files out. People drop this period's input files i
 - **The agent** is [Pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent), run over RPC with read, bash, edit and write tools, in the series folder. It copies and adapts the previous instance's scripts, so each instance's `working/` is a complete record of how its outputs were made.
 - **Skills** in `skills/` reach systems outside the series, for every series. `e1-automation` reaches JD Edwards E1 through the e1auto service, at `E1AUTO_URL` with `E1AUTO_API_KEY` from `.env`: it downloads and exports, and enters vouchers once a person approves them on the screen. It's a copy of the e1_automation project's skill as of its commit b217702; copy it again when that one changes, and update the commit here.
 - **Inputs** are uploads, or sources a person points the agent to, such as a database, a mailbox folder or a web API. The agent keeps a frozen copy of what it read, and the tile shows where it came from.
-- **Workspaces hold series,** such as one client's. A workspace or a series can be archived, which hides it until it's restored.
+- **Workspaces hold series,** such as one client's. Each belongs to one person, who alone sees it, besides admins. A workspace or a series can be archived, which hides it until it's restored.
+- **People sign in with Microsoft,** with one button.
+- **Tool use:** a series can let its agent use company systems, such as E1, DMS or XTS, in a browser the server runs, signed in as a service account whose password the agent never sees. Each write waits for a person to approve it.
 - **Series can share.** A series can let other series read it, one way.
 - **Everything is files on disk.** Each instance has `upload/` (people's files), `working/` (the agent's), `workspace.json` (what the screen shows) and `log.jsonl` (every event).
 
@@ -31,19 +33,38 @@ The image comes with a demo series that is already populated: a weekly borrowing
 
 ## Access
 
-Until someone is invited there is no sign-in, so keep the site on localhost. After that, each person sets up an authenticator app from a one-time link, and the site asks for their name and a code and keeps the browser in for 7 days. Each wrong code doubles the wait before the next try, up to 5 minutes.
+People sign in with one button, **Sign in with Microsoft**, and type nothing.
 
-    docker compose exec rollforward node src/access.ts /data invite alice   # prints /join/...: send alice the site's address with it
-    docker compose exec rollforward node src/access.ts /data list
-    docker compose exec rollforward node src/access.ts /data revoke alice   # her link, code and sessions stop working at once
+- **Demo (the default):** the button leads to a picker of two demo accounts: `admin@demo.test`, an admin, and `bob@demo.test`, a user. Anyone who reaches the site can be the demo admin, so keep it on localhost.
+- **Your organisation's Microsoft accounts:** with an app registered in Microsoft Entra ID, set in `.env` (see `.env.example`) `RF_OIDC_ISSUER` (`https://login.microsoftonline.com/<tenant id>/v2.0`), `RF_OIDC_CLIENT_ID` and `RF_PUBLIC_URL`, then match the app's registration:
+  - its redirect: `RF_OIDC_REDIRECT_URI`, exactly as registered (by default `RF_PUBLIC_URL/auth/callback`; the site's root works too);
+  - a **Web** app: its client secret in `RF_OIDC_CLIENT_SECRET`. A public client (Mobile and desktop) needs none;
+  - a **Single-page application**: `RF_OIDC_SPA=1`, and no secret. The browser then redeems the sign-in, as Microsoft requires, and the server checks the token's signature.
 
-A link works until it's used. Each time it's opened it shows a new key, so a mail scanner that opens it first learns nothing. Inviting someone again moves them to a new phone. The list is `.access.json` in the data root.
+  The same button then goes to Microsoft. `RF_ADMINS` names the admins; `RF_ALLOWED_DOMAINS` and `RF_AUTO_PROVISION=0` narrow who may come in. Start with `node --env-file=.env src/server.ts DATA_ROOT` without Docker. Microsoft takes http redirects only on localhost, so open the site as `http://localhost:8780`, not `127.0.0.1`; for others to reach it, register an https address.
+- **What people see:** each workspace has one owner. A user sees only the workspaces they own, with their series and files. Admins see every workspace, give one to someone in its settings, and manage people on the Users page. The same from a shell:
 
-To reach it from the internet, run `tailscale funnel --bg 8780`.
+      docker compose exec rollforward node src/auth.ts /data list
+      docker compose exec rollforward node src/auth.ts /data add alice@example.com [admin]
+      docker compose exec rollforward node src/auth.ts /data disable alice@example.com   # her sessions end at once
 
-For a demo run in podman behind Tailscale Funnel, the justfile has `just invite NAME`, which prints the whole link, `just revoke NAME`, `just people`, `just logs`, and `just deploy`, which rebuilds it from the committed main branch.
+Sessions last 12 hours (`RF_SESSION_HOURS`). The people, the owners and the session key are in `.rf/` in the data root.
 
-**Security:** anyone who can open the site, signed in once people are invited, can steer the agent, which runs shell commands inside the container: it can read the OpenRouter and E1 keys, everyone's keys and every series, and reach whatever the host can reach, E1 included.
+## Tool use
+
+A series picks which company systems its agent may use, under **Tool use** in its settings: E1, DMS and XTS are always offered, and choosing none is fine. Admins set each one up under **Systems**, at the foot of the sidebar, with its address and a service account the agent signs in as; until then it can be chosen, but the agent can't use it. Admins can add other systems there too.
+
+- The agent works them through a browser the server runs (Playwright with Chromium). The server signs in, so the password stays in `.rf/` and the agent never sees it.
+- Reading is free. A write (saving or submitting anything) is stopped until the agent proposes it and a person approves it from the instance's screen; then the server makes it and keeps a screenshot.
+- By default every request but GET counts as a write. A system that also posts its searches needs its write requests named under Systems, such as `POST */save*`.
+
+Without Docker, the browser needs `node node_modules/playwright/cli.js install chromium` once.
+
+To reach it from the internet, run `tailscale funnel --bg 8780`, with Microsoft sign-in configured.
+
+For a demo run in podman behind Tailscale Funnel, the justfile has `just invite EMAIL [admin]`, `just revoke EMAIL`, `just people`, `just logs`, and `just deploy`, which rebuilds it from the committed main branch.
+
+**Security:** anyone signed in can steer the agents of their own workspaces, which run shell commands inside the container: they can read the model's API key and every series, and reach whatever the host can reach.
 
 ## Without Docker
 
