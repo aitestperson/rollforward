@@ -255,11 +255,13 @@ test('each person sees only the workspaces they own; an admin sees all and can g
 
 test('Tool use always offers E1, DMS and XTS; admins set them up; a series may choose none, or one not set up yet', async () => {
   const b = sessionOf(await login(bob))!;
-  const offered = [{ id: 'e1', name: 'E1', configured: false }, { id: 'dms', name: 'DMS', configured: false }, { id: 'xts', name: 'XTS', configured: false }];
-  assert.deepEqual(await json('/systems', b), offered, 'anyone signed in sees the choices');
+  const offered = [['e1', 'E1'], ['dms', 'DMS'], ['xts', 'XTS'], ['jde-ar', 'JDE A/R'], ['walmart', 'Walmart Retail Link'], ['kohls', 'Kohls'], ['target', 'Target'], ['costco', 'Costco'], ['burlington', 'Burlington']]
+    .map(([id, name]) => ({ id, name, configured: false }));
+  assert.deepEqual(await json('/systems', b), offered, 'anyone signed in sees the choices, not the Microsoft 365 apps behind them');
   const sys = { name: 'E1', url: 'http://127.0.0.1:9/', username: 'svc', password: 'S3cret!' };
   assert.equal((await call('PUT', '/systems/e1', JSON.stringify(sys), b)).status, 403);
-  assert.equal((await call('PUT', '/systems/e1', JSON.stringify({ ...sys, password: '' }))).status, 400, 'setting one up needs a password');
+  assert.equal((await call('PUT', '/systems/e1', JSON.stringify({ ...sys, password: '' }))).status, 200, 'a built-in system may be saved part done');
+  assert.deepEqual((await json('/systems', b))[0], { id: 'e1', name: 'E1', configured: false }, 'but without a password it is not set up');
   assert.equal((await call('POST', '/systems', JSON.stringify(sys))).status, 400, 'E1 is built in, so it is set up, not added');
   const made = await (await call('PUT', '/systems/e1', JSON.stringify(sys))).json();
   assert.deepEqual([made.id, made.has_password, 'password' in made], ['e1', true, false]);

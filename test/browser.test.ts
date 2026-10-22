@@ -71,7 +71,8 @@ after(async () => {
 });
 
 test('E1, DMS and XTS are always offered; one is usable once an admin sets it up, and its password stays sealed', async () => {
-  assert.deepEqual(choices().map(c => [c.id, c.configured]), [['e1', true], ['dms', false], ['xts', false]]);
+  assert.deepEqual(choices().slice(0, 3).map(c => [c.id, c.configured]), [['e1', true], ['dms', false], ['xts', false]]);
+  assert.ok(!choices().some(c => c.id.startsWith('m365')), 'the Microsoft 365 apps serve tools; a series does not choose them');
   assert.ok(!readFileSync(join(tmp, '.rf', 'systems.json'), 'utf8').includes(PASS));
   assert.ok(!('password' in view(systems()[0])));
   assert.throws(() => saveSystem(undefined, { name: 'DMS', url, username: 'svc', password: 'x' }, 'admin'), /built in/);

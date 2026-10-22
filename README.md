@@ -8,7 +8,7 @@ Recurring tasks, files in and files out. People drop this period's input files i
 - **Inputs** are uploads, or sources a person points the agent to, such as a database, a mailbox folder or a web API. The agent keeps a frozen copy of what it read, and the tile shows where it came from.
 - **Workspaces hold series,** such as one client's. Each belongs to one person, who alone sees it, besides admins. A workspace or a series can be archived, which hides it until it's restored.
 - **People sign in with Microsoft,** with one button.
-- **Tool use:** a series can let its agent use company systems, such as E1, DMS or XTS, in a browser the server runs, signed in as a service account whose password the agent never sees. Each write waits for a person to approve it.
+- **Tool use:** a series can let its agent use company systems, such as E1, DMS or XTS, in a browser the server runs, signed in as a service account whose password the agent never sees. Each write waits for a person to approve it. Some systems, such as JDE A/R on OneDrive or the Costco and Target vendor portals, come with tools: fixed fetches the agent calls by name.
 - **Series can share.** A series can let other series read it, one way.
 - **Everything is files on disk.** Each instance has `upload/` (people's files), `working/` (the agent's), `workspace.json` (what the screen shows) and `log.jsonl` (every event).
 
@@ -58,6 +58,21 @@ A series picks which company systems its agent may use, under **Tool use** in it
 - By default every request but GET counts as a write. A system that also posts its searches needs its write requests named under Systems, such as `POST */save*`.
 
 Without Docker, the browser needs `node node_modules/playwright/cli.js install chromium` once.
+
+### Tools
+
+Some systems come with tools: fixed fetches the server runs, which the agent calls by name (`rf tool jde-ar-aging --company 450`) and whose files land in the instance's `working/`. They only read.
+
+| System | Tool | Fetches |
+| --- | --- | --- |
+| JDE A/R | `jde-ar-aging --company 450\|236` | the day's AR aging file from the company's OneDrive folder |
+| Walmart Retail Link | `walmart-paid-history` | the Paid History workbook's rows paid in the last days, a csv per sheet |
+| Kohls | `kohls-open-ap` | the Excel attachment of the day's open AP mail |
+| Target | `target-document-search` | Partners Online's Specific Document Search, as csv |
+| Costco | `costco-ap [--report payments\|unpaid-items]` | the Vendor Accounting Portal's Payments (last 12 months) and Unpaid Items, as csv |
+| Burlington | `burlington-invoice --invoice N …` | Traverse's Invoice Inquiry for those invoices, as csv |
+
+The first three read through Microsoft 365, as two apps registered in Entra ID with their own permissions: **M365 Mail** (`Mail.Read` on the mailbox, best limited to it by an application access policy) and **M365 OneDrive** (read access to the folders, such as `Sites.Selected` with read). Admins enter each app's tenant id, client id and client secret, and each source's links and settings, under Systems; Target and Costco mail a sign-in code, which the tools read from M365 Mail. **Test** on each row checks it for real, and `node --env-file=.env src/tools/cli.ts DATA_ROOT list | test SYSTEM | TOOL [--name value …]` runs the same from a shell. Set `RF_TODAY` in `.env` to test against a day that has data.
 
 To reach it from the internet, run `tailscale funnel --bg 8780`, with Microsoft sign-in configured.
 

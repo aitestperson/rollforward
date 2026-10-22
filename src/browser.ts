@@ -13,7 +13,14 @@ const ACTION_MS = 30_000, MAX_ACTIONS = 500, TEXT_MAX = 6000, MAX_ELEMENTS = 200
 const STEP_ACTIONS = ['click', 'type', 'select', 'check', 'press'];
 
 let browser: Promise<Browser> | undefined;
-const launch = () => (browser ??= chromium.launch());
+const launch = () => (browser ??= chromium.launch({ args: ['--disable-blink-features=AutomationControlled'] }));
+
+// A browser context that looks like an ordinary Chrome: some portals (Target's) turn away headless Chrome's own user agent.
+export async function newContext(): Promise<BrowserContext> {
+  const b = await launch();
+  const userAgent = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${b.version().split('.')[0]}.0.0.0 Safari/537.36`;
+  return b.newContext({ acceptDownloads: true, userAgent, locale: 'en-US', viewport: { width: 1400, height: 900 } });
+}
 
 export async function closeBrowser() {
   const b = browser;
@@ -25,7 +32,7 @@ type Session = { sys: System; context: BrowserContext; page: Page; writes: boole
 export type Step = { do: string; target?: string; value?: string };
 
 async function openContext(sys: System): Promise<Session> {
-  const context = await (await launch()).newContext({ acceptDownloads: true });
+  const context = await newContext();
   context.setDefaultTimeout(ACTION_MS);
   const origins = new Set([new URL(sys.url).origin, ...sys.extra_origins.map(o => new URL(o).origin)]);
   const s: Session = { sys, context, page: await context.newPage(), writes: false, blocked: [] };

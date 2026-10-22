@@ -10,7 +10,8 @@ import { createInstance, duplicateInstance, forget, renameInstance, replaceReadO
 import { startRun, type Run } from './runner.ts';
 import { authenticate, checkConfig, mode, removeUser, signOutEverywhere, upsertUser, users, type Me, type Role } from './auth.ts';
 import { initSystem, setOwner, workspace, workspaces } from './system.ts';
-import { BUILT_IN, choice, choices, removeSystem, saveSystem, system, view as systemView } from './systems.ts';
+import { builtIn, catalog as systemCatalog, choice, choices, kindOf, missing, removeSystem, savedSystem, saveSystem, system, view as systemView } from './systems.ts';
+import { parseArgs, run as runTool, tester, toolsFor, usage } from './tools/all.ts';
 import { Browsing, decide, pendingRequests, rejectPending, testLogin } from './browser.ts';
 
 const root = resolve(process.argv[2]);
@@ -42,10 +43,12 @@ function pending(inst: Instance, seen: number): Entry[] {
 
 function message(inst: Instance, n: number, entries: Entry[]): string {
   const reads = readable(inst.series()).map(s => `../${s}/`).join(', ');
+  // A system with tools is used through them; one without, in the agent's browser.
   const chosen = tools(inst.series()), ready = chosen.map(id => system(id)).filter(s => !!s);
-  const uses = ready.map(s => `${s.name} (rf browse ${s.id}, ${s.url})`).join(', ');
+  const uses = ready.filter(s => kindOf(s) === 'web' && !toolsFor([s.id]).length).map(s => `${s.name} (rf browse ${s.id}, ${s.url})`).join(', ');
+  const named = toolsFor(ready.map(s => s.id)).map(t => `${usage(t)}: ${t.summary}`).join(' | ');
   const waiting = chosen.filter(id => !system(id)).map(id => choice(id)?.name ?? id).join(', ');
-  return `Instance ${basename(inst.dir)} (folder ${basename(inst.dir)}/), run ${n}.${reads ? ` Series you can read: ${reads}.` : ''}${uses ? ` Systems you can use: ${uses}.` : ''}${waiting ? ` Chosen but not set up yet, so not usable: ${waiting}.` : ''} New log entries:\n`
+  return `Instance ${basename(inst.dir)} (folder ${basename(inst.dir)}/), run ${n}.${reads ? ` Series you can read: ${reads}.` : ''}${uses ? ` Systems you can use: ${uses}.` : ''}${named ? ` Tools you can use: ${named}.` : ''}${waiting ? ` Chosen but not set up yet, so not usable: ${waiting}.` : ''} New log entries:\n`
     + entries.map(e => JSON.stringify(e)).join('\n');
 }
 
@@ -148,6 +151,22 @@ async function agent(req: IncomingMessage, res: ServerResponse, url: URL) {
   if (url.pathname === '/agent/workspace' && req.method === 'GET') return send(res, 200, a.inst.doc);
   if (url.pathname === '/agent/workspace' && req.method === 'PUT') return send(res, 200, `saved, rev ${a.inst.put((await body(req)).toString())}`);
   if (url.pathname === '/agent/reply' && req.method === 'POST') return send(res, 200, `replied, seq ${a.inst.append('agent', 'reply', { text: (await body(req)).toString() }).seq}`);
+  // Tools: the ones of the systems in the series' Tool use that are ready; each run is logged, with what it saved.
+  const ready = () => toolsFor(tools(a.inst.series()).filter(id => system(id)));
+  if (url.pathname === '/agent/tools' && req.method === 'GET') return send(res, 200, ready().map(t => `${usage(t)}\n  ${t.summary}`).join('\n\n') || 'No tools: this series\' Tool use has no system with tools that is set up.');
+  if (url.pathname === '/agent/tool' && req.method === 'POST') {
+    const { name, args } = JSON.parse((await body(req)).toString()), t = ready().find(t => t.name === name), t0 = Date.now();
+    if (!t) throw new HttpError(403, `no tool ${name} for this series; rf tools lists the ones it has`);
+    const words = Array.isArray(args) ? args.map(String) : [];
+    try {
+      const out = await runTool(t, parseArgs(words), join(a.inst.dir, 'working'));
+      a.inst.append('agent', 'tool', { tool: t.name, args: words, as_of: out.asOf, as_of_from: out.asOfFrom, files: out.files, text: out.text, ms: Date.now() - t0 });
+      return send(res, 200, `${out.text}\nAs of ${out.asOf}${out.asOfFrom === 'today' ? '' : ` (from ${out.asOfFrom})`}. Saved: ${out.files.join(', ')}`);
+    } catch (e) {
+      a.inst.append('agent', 'tool', { tool: t.name, args: words, error: (e as Error).message, ms: Date.now() - t0 });
+      throw e;
+    }
+  }
   if (url.pathname === '/agent/browse' && req.method === 'POST') {
     const { system: name, action, args } = JSON.parse((await body(req)).toString());
     a.browsing ??= new Browsing(a.inst, tools(a.inst.series()));
@@ -386,18 +405,24 @@ async function admin(me: Me, req: IncomingMessage, res: ServerResponse, url: URL
 
 // The systems catalog: anyone signed in may list the names, to choose a series' Tool use; only admins see the rest and change it.
 async function catalog(me: Me, req: IncomingMessage, res: ServerResponse, url: URL) {
-  const [id, action] = url.pathname.split('/').slice(2).map(decodeURIComponent);
-  if (!id && req.method === 'GET') return send(res, 200, me.role === 'admin' ? choices().map(c => (c.configured ? { ...systemView(system(c.id)!), configured: true } : c)) : choices());
+  const [id = '', action] = url.pathname.split('/').slice(2).map(decodeURIComponent);
+  if (!id && req.method === 'GET') return send(res, 200, me.role === 'admin' ? systemCatalog() : choices());
   if (me.role !== 'admin') throw new HttpError(403, 'admins only');
   if (!id && req.method === 'POST') return send(res, 200, systemView(saveSystem(undefined, JSON.parse((await body(req)).toString()), me.email)));
-  const s = system(id ?? '');
-  // A built-in system not set up yet: saving it sets it up.
-  if (!s && req.method === 'PUT' && BUILT_IN.some(b => b.id === id)) return send(res, 200, systemView(saveSystem(id, JSON.parse((await body(req)).toString()), me.email)));
-  if (!s) throw new HttpError(404, `no system ${id}${BUILT_IN.some(b => b.id === id) ? ' set up yet' : ''}`);
+  const s = savedSystem(id);
+  if (!s && !builtIn(id)) throw new HttpError(404, `no system ${id}`);
+  // A built-in system is saved under its own id, set up or not; it may be saved in part, such as its links before its secret.
+  if (req.method === 'PUT') return send(res, 200, systemView(saveSystem(s?.id ?? id, JSON.parse((await body(req)).toString()), me.email)));
   if (action === 'test' && req.method === 'POST') {
-    try { return send(res, 200, await testLogin(s)); } catch (e) { throw new HttpError(502, (e as Error).message.split('\n')[0]); }
+    const need = missing(s, id);
+    if (need.length) throw new HttpError(409, `${s?.name ?? builtIn(id)!.name} still needs ${need.join(', ')}`);
+    try {
+      return send(res, 200, await (tester(s!.id) ?? testLogin)(s!));
+    } catch (e) {
+      throw new HttpError(502, (e as Error).message.split('\n')[0]);
+    }
   }
-  if (req.method === 'PUT') return send(res, 200, systemView(saveSystem(s.id, JSON.parse((await body(req)).toString()), me.email)));
+  if (!s) throw new HttpError(404, `${builtIn(id)!.name} is not set up`);
   if (req.method === 'DELETE') return void (removeSystem(s.id), send(res, 200, 'ok'));
   throw new HttpError(405, 'PUT, DELETE, or POST test');
 }
@@ -424,4 +449,4 @@ createServer({ requestTimeout: 60 * 60_000 }, async (req, res) => {
   } catch (err) {
     send(res, err instanceof HttpError ? err.status : 500, (err as Error).message);
   }
-}).listen(port, host, () => console.log(`rollforward on http://${host}:${port}, data in ${root}, sign-in ${mode}`));
+}).listen(port, host, () => console.log(`rollforward on http://${host}:${port}, data in ${root}, sign-in ${mode}${process.env.RF_TODAY ? `, tools take today as ${process.env.RF_TODAY} (RF_TODAY)` : ''}`));

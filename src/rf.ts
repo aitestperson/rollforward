@@ -17,8 +17,10 @@ if (cmd === 'show') res = await fetch(`${url}/workspace`, { headers });
 else if (cmd === 'put' && arg) res = await fetch(`${url}/workspace`, { method: 'PUT', headers, body: readFileSync(arg === '-' ? 0 : arg) });
 else if (cmd === 'reply' && arg) res = await fetch(`${url}/reply`, { method: 'POST', headers, body: arg === '-' ? readFileSync(0) : arg });
 else if (cmd === 'browse' && args.length >= 2) res = await browse();
+else if (cmd === 'tools') res = await fetch(`${url}/tools`, { headers });
+else if (cmd === 'tool' && args.length >= 1) res = await fetch(`${url}/tool`, { method: 'POST', headers, body: JSON.stringify({ name: args[0], args: args.slice(1) }) });
 else {
-  console.error('usage: rf show | rf put FILE | rf reply TEXT | rf browse SYSTEM open [PATH] | look | click N | type N TEXT | select N OPTION | press KEY | back | download N|PATH FILE | screenshot FILE | propose "WHAT" STEPS.json');
+  console.error('usage: rf show | rf put FILE | rf reply TEXT | rf tools | rf tool NAME [--name value ...] | rf browse SYSTEM open [PATH] | look | click N | type N TEXT | select N OPTION | press KEY | back | download N|PATH FILE | screenshot FILE | propose "WHAT" STEPS.json');
   process.exit(2);
 }
 console.log(await res.text());
