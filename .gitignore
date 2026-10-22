@@ -5,3 +5,4 @@ demo/data/
 __pycache__/
 demo/run/
 .env
+data/
