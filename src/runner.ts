@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const app = join(dirname(fileURLToPath(import.meta.url)), '..');
+const skills = join(app, 'skills');
 const cliPath = join(dirname(fileURLToPath(import.meta.resolve('@earendil-works/pi-coding-agent'))), 'cli.js');
 const [provider, model] = (process.env.RF_MODEL ?? 'openrouter/anthropic/claude-opus-5.5').split(/\/(.*)/);
 
@@ -13,16 +14,20 @@ export type Run = {
   settled: Promise<boolean>;
 };
 
-export async function startRun(o: { seriesDir: string; instanceDir: string; env: Record<string, string>; message: string; onEvent: (e: JsonAgentSessionEvent) => void }): Promise<Run> {
-  const client = new RpcClient({
+export function pi(o: { seriesDir: string; instanceDir: string; env: Record<string, string> }): RpcClient {
+  return new RpcClient({
     cliPath, cwd: o.seriesDir, provider, model,
-    env: { ...o.env, PATH: `${app}/bin:${app}/.venv/bin:${process.env.PATH}`, PYTHONPATH: join(o.seriesDir, '.pylib') },
-    args: ['--no-extensions', '--no-skills', '--no-mcp', '--no-context-files', '--no-prompt-templates',
+    env: { ...o.env, PATH: `${app}/bin:${app}/.venv/bin:${process.env.PATH}`, PYTHONPATH: join(o.seriesDir, '.pylib'), RF_SKILLS: skills },
+    args: ['--no-extensions', '--no-skills', '--no-mcp', '--no-context-files', '--no-prompt-templates', '--skill', skills,
       '--tools', 'read,bash,edit,write', '--append-system-prompt', join(app, 'prompt.md'),
       '--thinking', process.env.RF_THINKING ?? 'high',
       '--session-dir', join(o.instanceDir, 'session'), '--session-id', 'main',
       ...JSON.parse(process.env.RF_PI_ARGS ?? '[]')],
   });
+}
+
+export async function startRun(o: { seriesDir: string; instanceDir: string; env: Record<string, string>; message: string; onEvent: (e: JsonAgentSessionEvent) => void }): Promise<Run> {
+  const client = pi(o);
   const settled = new Promise<boolean>(resolve => client.onEvent(e => e.type === 'agent_settled' && resolve(e.aborted)));
   client.onEvent(o.onEvent);
   await client.start();

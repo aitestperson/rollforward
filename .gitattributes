@@ -1,2 +1,4 @@
 # bin/ runs in the Linux container, where a shebang line ending in CR cannot start
 bin/* text eol=lf
+# Skills run there too, and stay byte-identical to the projects they are copied from
+skills/** text=auto eol=lf

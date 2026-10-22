@@ -5,6 +5,7 @@ Recurring tasks, files in and files out. People drop this period's input files i
 ![An instance: inputs, steps and outputs, joined by what each is made from](docs/screenshots/instance.png)
 
 - **The agent** is [Pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent), run over RPC with read, bash, edit and write tools, in the series folder. It copies and adapts the previous instance's scripts, so each instance's `working/` is a complete record of how its outputs were made.
+- **Skills** in `skills/` reach systems outside the series, for every series. `e1-automation` reaches JD Edwards E1 through the e1auto service, at `E1AUTO_URL` with `E1AUTO_API_KEY` from `.env`: it downloads and exports, and enters vouchers once a person approves them on the screen. It's a copy of the e1_automation project's skill as of its commit b217702; copy it again when that one changes, and update the commit here.
 - **Inputs** are uploads, or sources a person points the agent to, such as a database, a mailbox folder or a web API. The agent keeps a frozen copy of what it read, and the tile shows where it came from.
 - **Workspaces hold series,** such as one client's. A workspace or a series can be archived, which hides it until it's restored.
 - **Series can share.** A series can let other series read it, one way.
@@ -18,7 +19,7 @@ Recurring tasks, files in and files out. People drop this period's input files i
 
 ## Try it
 
-    cp .env.example .env          # set OPENROUTER_API_KEY
+    cp .env.example .env          # set OPENROUTER_API_KEY, and E1AUTO_API_KEY for E1
     docker compose up --build     # then open http://127.0.0.1:8780
 
 The image comes with a demo series that is already populated: a weekly borrowing base for a made-up housewares company, nine weeks the agent has done.
@@ -42,7 +43,7 @@ To reach it from the internet, run `tailscale funnel --bg 8780`.
 
 For a demo run in podman behind Tailscale Funnel, the justfile has `just invite NAME`, which prints the whole link, `just revoke NAME`, `just people`, `just logs`, and `just deploy`, which rebuilds it from the committed main branch.
 
-**Security:** anyone who can open the site, signed in once people are invited, can steer the agent, which runs shell commands inside the container: it can read the API key, everyone's keys and every series, and reach whatever the host can reach.
+**Security:** anyone who can open the site, signed in once people are invited, can steer the agent, which runs shell commands inside the container: it can read the OpenRouter and E1 keys, everyone's keys and every series, and reach whatever the host can reach, E1 included.
 
 ## Without Docker
 
@@ -62,6 +63,7 @@ The [justfile](justfile) has these and more as recipes; `just` lists them.
   - `RF_LIMIT_MIN` (120)
   - `RF_PI_ARGS` (a JSON array of extra Pi arguments)
   - `RF_HOST` (`127.0.0.1`)
+  - `E1AUTO_URL` and `E1AUTO_API_KEY`, for the e1-automation skill
 
 To build the demo from scratch (about $4 of model use; the generator needs the internet for the ECB rates):
 
