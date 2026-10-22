@@ -1,6 +1,6 @@
 # rollforward: recurring tasks, files in and files out
 
-`src/` holds the server, the store, the runner and `rf`, `web/` the page, and `demo/` a made-up weekly series to test them with. [docs/design.md](docs/design.md) holds the design notes for the page.
+`src/` holds the server, the store, the runner and `rf`, `web/` the page, `skills/` the skills every run loads, and `demo/` a made-up weekly series to test them with. [docs/design.md](docs/design.md) holds the design notes for the page.
 
 - **What this is:** a small web platform for recurring tasks. People drop in input files, and an agent produces the output files, having learned how from earlier instances. People move files; they don't type prompts.
 
@@ -160,9 +160,9 @@ The schemas are loose, and unknown fields are ignored, so the agent and the UI c
   - It draws the graph: a handful of steps, each in a small file it writes, even where earlier instances had none, and each item's `from`, as its scripts actually read them.
   - It puts each step and output on the screen when it's ready, and ends every run with `rf put` and a one-line summary.
 - **The agent makes the call.** Nothing in the system checks or scores outputs. The agent decides whether its work is right, and writes checks as scripts in `working/` when it judges it needs them.
-- **Answers carry over.** Close logs the default of every unanswered question as an answer. The next instance's agent applies the answers given after the previous instance's last run, and folds standing rules into `process.md`.
+- **Answers carry over.** Close logs the default of every unanswered question as an answer. The next instance's agent applies the answers given after the previous instance's last run, and folds standing rules into `process.md`. Approvals to write don't carry over: one the previous instance never acted on is reported and asked again (decision 29).
 - **Reads sources, never writes them.** People usually bring the files. When a person points the agent to a source instead, such as a database or a mailbox folder, the agent reads it, saves what it read in `working/` as the input's file with a `source`, and keeps the fetch as a script that later instances rerun. It reads the series folder, and writes only to its instance's `working/` and, through `rf`, its workspace.
-  - People remain the executor: they post the entries and send the certificates. The systems in a series' Tool use are the exception: there the agent may write, but only what a person approves, step by step (see Tool use).
+  - People remain the executor: they post the entries and send the certificates. The systems in a series' Tool use are the exception: there the agent may write, but only what a person approves, step by step (see Tool use). So are skills: a skill writes only what a person approves on the screen (decision 29).
   - On the host, these limits rest on the instructions alone; M3 enforces them with a sandbox.
 - **History is the memory.** Rather than keep a standing script library, the agent copies and adapts the most recently closed instance's scripts. Each instance's `working/` is then a complete record of how its outputs were made. Nothing else is carried between instances.
 - **One run at a time per series,** with a time limit (2 hours; `RF_LIMIT_MIN`).
@@ -200,7 +200,7 @@ Some inputs come from the same place by the same steps every time: a file in a O
 The runner, [src/runner.ts](src/runner.ts), drives Pi through Pi's `RpcClient`, which runs Pi as a child process and exchanges JSON lines with it:
 
     pi --mode rpc --provider openrouter --model anthropic/claude-opus-5.5 --thinking high \
-      --no-extensions --no-skills --no-mcp --no-context-files --no-prompt-templates \
+      --no-extensions --no-skills --no-mcp --no-context-files --no-prompt-templates --skill <app>/skills \
       --tools read,bash,edit,write --append-system-prompt <app>/prompt.md \
       --session-dir "<label>/session" --session-id main
 
@@ -211,6 +211,7 @@ The runner, [src/runner.ts](src/runner.ts), drives Pi through Pi's `RpcClient`, 
 - **One process per run.** The runner stops Pi at `agent_settled`, since RPC mode runs until its stdin closes. At the time limit, it aborts the run and stops Pi.
 - **Sessions are found by working folder.** Pi reopens `main` only if the folder recorded in the session's first line is the series folder, so a series rename rewrites that line in every session of the series.
 - **Credentials:** Pi uses the OpenRouter key from `OPENROUTER_API_KEY` or the user's Pi credentials. It works with `--no-extensions`, unlike a Claude subscription, which needs its auth extension loaded with `-e`.
+- **Skills are the app's own:** `--skill` loads every skill in `skills/`, for every series, and `--no-skills` keeps out the Pi skills of whoever runs the server. The agent's scripts reach a skill's files through `RF_SKILLS`. A skill's settings, such as `E1AUTO_URL` and `E1AUTO_API_KEY`, come from the server's environment, which Pi passes on.
 - **Harness-specific code stays in one module,** the runner. `RpcClient` always starts `node <cliPath>`, so M3 needs a `cliPath` shim that runs `sbx exec -i <sandbox> -- pi …`. Pi's docs show only `pi -p` inside a sandbox, so RPC through `sbx exec` needs a test.
 - **Not the AI SDK's `HarnessAgent`,** whose steering is experimental (`experimental_steerTurn`) and not supported by every adapter. **Not Docker Agent,** whose delegation isn't needed when agents talk through files; Docker's sandbox is still the M3 plan.
 
@@ -304,7 +305,7 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
 16. **No pass bars or automatic checks** (15 Oct): agents make the call, and build checks as scripts if they need them. The product isn't aimed at finance, and shouldn't be over-explained.
 17. **Key and additional inputs; evidence and working** (15 Oct). See Concepts.
 18. **Direction** (15 Oct): each instance records its parent (`from`). The agent starts there and checks the open instances; no stricter rules.
-19. **Sources** (15 Oct): the agent may read the sources people point it to, and never writes to them.
+19. **Sources** (15 Oct): the agent may read the sources people point it to, and never writes to them. Tool use (27) and skills (29) let it write, one approved write at a time.
 20. **Two end states** (15 Oct): Close or Abandon.
 21. **Series visibility** (15 Oct): one way, granted by the publishing series, read-only for the reader; one workspace for now. People's roles per series (owner, member, visitor) come later.
 22. **Duplicate and series settings** (15 Oct): a closed or abandoned instance can be duplicated into an open one. Each series has settings, for now its name and its visibility to other series.
@@ -315,7 +316,8 @@ The risk is whether an agent can learn a real deliverable from examples, so the 
 26. **Sign in with Microsoft, and workspaces per person** (20 Oct): one button, and people type nothing. Until the organisation registers an app in Entra ID, the button leads to two fixed demo accounts; once it's configured, the same button goes to Microsoft. The server runs the sign-in itself rather than through a proxy, so it knows who is who for ownership and the log. Each workspace has one owner; others don't see it; admins see and manage everything.
 27. **Tool use through a browser** (20 Oct): a series picks company systems, such as E1, DMS and XTS, from a catalog the admins keep, and its agent uses them in a browser the server runs, as a shared service account whose password stays with the server. Reading is free; each write waits for a person, who sees its steps and a screenshot, and the server makes it. E1, DMS and XTS are built in, so a series can choose them, or none, before they're set up.
 28. **Sign in with the app as the organisation registered it** (21 Oct): the company's Entra app has no client secret and registers the site's root as a Single-page application redirect. Rather than ask for a different registration, the server takes the redirect as given and lets the browser redeem the code, checking the token's signature itself.
-29. **Tools for fixed fetches** (22 Oct): inputs that come by the same steps every time (OneDrive files, a mail's attachment, vendor portals behind emailed codes) are named tools the server runs with credentials admins keep under Systems, rather than steps the agent clicks through. They only read, they cost no model time, and the same steps give the same file. Microsoft 365 is reached as an app with its own permissions, and the code only reads, whatever those permissions allow.
+29. **Skills** (22 Oct): every run loads the skills in `skills/`, for every series. The first, `e1-automation`, reaches JD Edwards E1 through the e1auto HTTP service: it downloads attachments, exports ledgers and enters vouchers. For those the agent uses it rather than the browser of Tool use (27), which covers the rest of E1. It is a copy of the e1_automation project's skill, refreshed by hand, so that this repo deploys in one step. What a skill fetches is handled like any fetched file. Each write needs its own approval on the screen: the agent dry-runs, shows what it would write, and asks a question whose default writes nothing; it writes only once a person, not the server, picks the option that writes in that instance, and an approval never becomes a standing rule. That rests on the instructions and on e1auto's own switch (`E1_ALLOW_WRITE`, UAT only) until the server gates a skill's writes as it does Tool use's (27). Meanwhile the agent holds `E1AUTO_API_KEY`, unlike Tool use's password, which stays with the server; the sandbox (M3) has to keep the key out of the agent's reach the same way.
+30. **Tools for fixed fetches** (22 Oct): inputs that come by the same steps every time (OneDrive files, a mail's attachment, vendor portals behind emailed codes) are named tools the server runs with credentials admins keep under Systems, rather than steps the agent clicks through. They only read, they cost no model time, and the same steps give the same file. Microsoft 365 is reached as an app with its own permissions, and the code only reads, whatever those permissions allow.
 
 ## Proposed by the agent (open to change)
 
