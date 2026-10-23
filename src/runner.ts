@@ -14,12 +14,13 @@ export type Run = {
   settled: Promise<boolean>;
 };
 
-export function pi(o: { seriesDir: string; instanceDir: string; env: Record<string, string> }): RpcClient {
+// `skills`: the skills the series chose under Skill use; the run loads only those.
+export function pi(o: { seriesDir: string; instanceDir: string; env: Record<string, string>; skills?: string[] }): RpcClient {
   return new RpcClient({
     cliPath, cwd: o.seriesDir, provider, model,
     // Pi gets the server's environment; blank the sign-in secret so the agent never sees it.
     env: { ...o.env, PATH: [join(app, 'bin'), join(app, '.venv', process.platform === 'win32' ? 'Scripts' : 'bin'), process.env.PATH].join(delimiter), PYTHONPATH: join(o.seriesDir, '.pylib'), RF_SKILLS: skills, RF_OIDC_CLIENT_SECRET: '' },
-    args: ['--no-extensions', '--no-skills', '--no-mcp', '--no-context-files', '--no-prompt-templates', '--skill', skills,
+    args: ['--no-extensions', '--no-skills', '--no-mcp', '--no-context-files', '--no-prompt-templates', ...(o.skills ?? []).flatMap(id => ['--skill', join(skills, id)]),
       '--tools', 'read,bash,edit,write', '--append-system-prompt', join(app, 'prompt.md'),
       '--thinking', process.env.RF_THINKING ?? 'high',
       '--session-dir', join(o.instanceDir, 'session'), '--session-id', 'main',
@@ -27,7 +28,7 @@ export function pi(o: { seriesDir: string; instanceDir: string; env: Record<stri
   });
 }
 
-export async function startRun(o: { seriesDir: string; instanceDir: string; env: Record<string, string>; message: string; onEvent: (e: JsonAgentSessionEvent) => void }): Promise<Run> {
+export async function startRun(o: { seriesDir: string; instanceDir: string; env: Record<string, string>; skills?: string[]; message: string; onEvent: (e: JsonAgentSessionEvent) => void }): Promise<Run> {
   const client = pi(o);
   const settled = new Promise<boolean>(resolve => client.onEvent(e => e.type === 'agent_settled' && resolve(e.aborted)));
   client.onEvent(o.onEvent);

@@ -1,0 +1,11 @@
+{
+ "connection": "burlington",
+ "vars": ["invoices"],
+ "steps": [
+  { "goto": "/#/search/invoice?fnc_invoice_num={invoices}" },
+  { "reload": true },
+  { "wait": { "any": [{ "text": "/Viewing \\d+ - \\d+ of \\d+ records/" }, { "text": "/No results/i" }] }, "timeout": 120000 },
+  { "stop_if": { "text": "/No results/i" }, "message": "Burlington has no invoice {invoices}" },
+  { "download": { "text": "/^\\s*Export to CSV\\s*$/i" }, "save": "Burlington invoices {invoices} {today}.csv" }
+ ]
+}

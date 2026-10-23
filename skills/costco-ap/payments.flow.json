@@ -1,0 +1,18 @@
+{
+ "connection": "costco",
+ "reads_that_post": ["POST */as/token.oauth2", "POST */saml/*", "POST */saml2/*", "POST */idp/*", "POST */sso*", "POST */vp/index.html*"],
+ "steps": [
+  { "goto": "{portal}" },
+  { "wait": { "role": "radio", "name": "Payments" }, "timeout": 120000 },
+  { "click": { "role": "radio", "name": "Payments" } },
+  { "pause": 1000 },
+  { "wait": { "gone": ".sapUiLocalBusyIndicator, .sapMBusyIndicator, .sapUiBlockLayer" }, "timeout": 180000 },
+  { "click": { "css": "[role=combobox]" } },
+  { "click": { "role": "option", "name": "Last 12 Months" } },
+  { "pause": 1000 },
+  { "wait": { "gone": ".sapUiLocalBusyIndicator, .sapMBusyIndicator, .sapUiBlockLayer" }, "timeout": 180000 },
+  { "expect": { "css": "[role=combobox] input" }, "value": "Last 12 Months" },
+  { "click": { "css": "button[title=Download]" } },
+  { "download": { "text": "Download List as CSV" }, "save": "Costco payments last 12 months {today}.csv" }
+ ]
+}

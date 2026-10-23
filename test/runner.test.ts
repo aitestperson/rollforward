@@ -7,7 +7,7 @@ import { pi } from '../src/runner.ts';
 
 const tmp = mkdtempSync(join(tmpdir(), 'rf-')), home = join(tmp, 'home'), series = join(tmp, 'larkfield', 'Weekly');
 const agentDir = join(home, '.pi', 'agent'), stray = join(agentDir, 'skills', 'stray');
-const agent = pi({ seriesDir: series, instanceDir: join(series, 'w1'), env: { HOME: home, PI_CODING_AGENT_DIR: agentDir } });
+const agent = pi({ seriesDir: series, instanceDir: join(series, 'w1'), env: { HOME: home, PI_CODING_AGENT_DIR: agentDir }, skills: ['e1-automation'] });
 
 before(async () => {
   mkdirSync(series, { recursive: true });
@@ -21,10 +21,11 @@ after(async () => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-test('every run offers the agent the skills in skills/, and not the Pi skills of whoever runs the server', async () => {
+test('a run offers the agent the skills its series chose, and not the others nor the Pi skills of whoever runs the server', async () => {
   const offered = (await agent.getCommands()).filter(c => c.source === 'skill').map(c => c.name);
   assert.ok(offered.includes('skill:e1-automation'), `offered: ${offered.join(', ') || 'none'}`);
   assert.ok(!offered.includes('skill:stray'), `offered: ${offered.join(', ')}`);
+  assert.ok(!offered.includes('skill:kohls-open-ap'), `offered: ${offered.join(', ')}`);
 });
 
 test("the agent's scripts reach a skill's files through $RF_SKILLS", async () => {

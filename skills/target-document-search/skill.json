@@ -1,0 +1,6 @@
+{
+ "connections": ["target"],
+ "settings": [
+  { "key": "report", "label": "Report page", "hint": "The address of the Specific Document Search card under Apps & Reports, Account Payable: Domestic" }
+ ]
+}

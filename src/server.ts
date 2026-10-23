@@ -10,9 +10,12 @@ import { createInstance, duplicateInstance, forget, renameInstance, replaceReadO
 import { startRun, type Run } from './runner.ts';
 import { authenticate, checkConfig, mode, removeUser, signOutEverywhere, upsertUser, users, type Me, type Role } from './auth.ts';
 import { initSystem, setOwner, workspace, workspaces } from './system.ts';
-import { builtIn, catalog as systemCatalog, choice, choices, kindOf, missing, removeSystem, savedSystem, saveSystem, system, view as systemView } from './systems.ts';
-import { parseArgs, run as runTool, tester, toolsFor, usage } from './tools/all.ts';
-import { Browsing, decide, pendingRequests, rejectPending, testLogin } from './browser.ts';
+import { builtIn, catalog as systemCatalog, choice, choices, kindOf, missing, removeSystem, savedSystem, saveSystem, view as systemView } from './systems.ts';
+import { decide, pendingRequests, rejectPending, testLogin, type Browsing } from './browser.ts';
+import { agentCall, connectionsText } from './agent-api.ts';
+import { testM365 } from './m365.ts';
+import { seriesSettings } from './series.ts';
+import { checkChosen, skills } from './skills.ts';
 
 const root = resolve(process.argv[2]);
 const app = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -43,19 +46,9 @@ function pending(inst: Instance, seen: number): Entry[] {
 
 function message(inst: Instance, n: number, entries: Entry[]): string {
   const reads = readable(inst.series()).map(s => `../${s}/`).join(', ');
-  // A system with tools is used through them; one without, in the agent's browser.
-  const chosen = tools(inst.series()), ready = chosen.map(id => system(id)).filter(s => !!s);
-  const uses = ready.filter(s => kindOf(s) === 'web' && !toolsFor([s.id]).length).map(s => `${s.name} (rf browse ${s.id}, ${s.url})`).join(', ');
-  const named = toolsFor(ready.map(s => s.id)).map(t => `${usage(t)}: ${t.summary}`).join(' | ');
-  const waiting = chosen.filter(id => !system(id)).map(id => choice(id)?.name ?? id).join(', ');
-  return `Instance ${basename(inst.dir)} (folder ${basename(inst.dir)}/), run ${n}.${reads ? ` Series you can read: ${reads}.` : ''}${uses ? ` Systems you can use: ${uses}.` : ''}${named ? ` Tools you can use: ${named}.` : ''}${waiting ? ` Chosen but not set up yet, so not usable: ${waiting}.` : ''} New log entries:\n`
+  const set = seriesSettings(inst.series()), uses = set.tools.length || Object.keys(set.skills).length ? connectionsText(inst.series()).split('\n').join('; ') : '';
+  return `Instance ${basename(inst.dir)} (folder ${basename(inst.dir)}/), run ${n}.${reads ? ` Series you can read: ${reads}.` : ''}${uses ? ` Connections and skills you can use: ${uses}.` : ''} New log entries:\n`
     + entries.map(e => JSON.stringify(e)).join('\n');
-}
-
-// series.json: {"visible_to": [series], "tools": [system ids]}, set by people through the server.
-function seriesSettings(seriesDir: string): { visible_to: string[]; tools: string[] } {
-  const p = join(seriesDir, 'series.json'), s = existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : {};
-  return { ...s, visible_to: s.visible_to ?? [], tools: s.tools ?? [] };
 }
 
 const visibleTo = (seriesDir: string) => seriesSettings(seriesDir).visible_to;
@@ -95,8 +88,8 @@ async function start(inst: Instance) {
   inst.append('server', 'run', { run: n, upto: a.sent });
   try {
     a.run = await startRun({
-      seriesDir: series, instanceDir: inst.dir, message: text,
-      env: { RF_URL: `http://127.0.0.1:${port}`, RF_TOKEN: a.token },
+      seriesDir: series, instanceDir: inst.dir, message: text, skills: Object.keys(seriesSettings(series).skills).filter(id => skills().some(s => s.id === id)),
+      env: { RF_URL: `http://127.0.0.1:${port}`, RF_TOKEN: a.token, RF_WORKING: join(inst.dir, 'working') },
       onEvent: e => {
         if (e.type === 'message_end' && e.message.role === 'assistant') a.cost += e.message.usage.cost.total;
         if (e.type !== 'message_start' || e.message.role !== 'user') return;
@@ -151,28 +144,9 @@ async function agent(req: IncomingMessage, res: ServerResponse, url: URL) {
   if (url.pathname === '/agent/workspace' && req.method === 'GET') return send(res, 200, a.inst.doc);
   if (url.pathname === '/agent/workspace' && req.method === 'PUT') return send(res, 200, `saved, rev ${a.inst.put((await body(req)).toString())}`);
   if (url.pathname === '/agent/reply' && req.method === 'POST') return send(res, 200, `replied, seq ${a.inst.append('agent', 'reply', { text: (await body(req)).toString() }).seq}`);
-  // Tools: the ones of the systems in the series' Tool use that are ready; each run is logged, with what it saved.
-  const ready = () => toolsFor(tools(a.inst.series()).filter(id => system(id)));
-  if (url.pathname === '/agent/tools' && req.method === 'GET') return send(res, 200, ready().map(t => `${usage(t)}\n  ${t.summary}`).join('\n\n') || 'No tools: this series\' Tool use has no system with tools that is set up.');
-  if (url.pathname === '/agent/tool' && req.method === 'POST') {
-    const { name, args } = JSON.parse((await body(req)).toString()), t = ready().find(t => t.name === name), t0 = Date.now();
-    if (!t) throw new HttpError(403, `no tool ${name} for this series; rf tools lists the ones it has`);
-    const words = Array.isArray(args) ? args.map(String) : [];
-    try {
-      const out = await runTool(t, parseArgs(words), join(a.inst.dir, 'working'));
-      a.inst.append('agent', 'tool', { tool: t.name, args: words, as_of: out.asOf, as_of_from: out.asOfFrom, files: out.files, text: out.text, ms: Date.now() - t0 });
-      return send(res, 200, `${out.text}\nAs of ${out.asOf}${out.asOfFrom === 'today' ? '' : ` (from ${out.asOfFrom})`}. Saved: ${out.files.join(', ')}`);
-    } catch (e) {
-      a.inst.append('agent', 'tool', { tool: t.name, args: words, error: (e as Error).message, ms: Date.now() - t0 });
-      throw e;
-    }
-  }
-  if (url.pathname === '/agent/browse' && req.method === 'POST') {
-    const { system: name, action, args } = JSON.parse((await body(req)).toString());
-    a.browsing ??= new Browsing(a.inst, tools(a.inst.series()));
-    const r = await a.browsing.command(String(name ?? ''), String(action ?? ''), Array.isArray(args) ? args.map(String) : []);
-    return send(res, r.status, r.text);
-  }
+  // Connections and skills: rf files, rf mail, rf settings, rf browse (see agent-api.ts).
+  const r = await agentCall(a, url.pathname, req.method ?? 'GET', url.searchParams, () => body(req));
+  if (r) return send(res, r.status, r.data);
   throw new HttpError(404, 'not found');
 }
 
@@ -295,10 +269,12 @@ async function people(me: Me, req: IncomingMessage, res: ServerResponse, url: UR
       return send(res, 200, 'ok');
     }
     if (req.method === 'PUT') {
-      const { name, visible_to, tools: uses, archived } = JSON.parse((await body(req)).toString());
+      const { name, visible_to, tools: uses, skills: chosen, archived } = JSON.parse((await body(req)).toString());
       if (!Array.isArray(visible_to) || !visible_to.every(n => typeof n === 'string')) throw new HttpError(400, 'visible_to must be a list of series names');
-      if (uses !== undefined && (!Array.isArray(uses) || !uses.every(t => typeof t === 'string' && choice(t)))) throw new HttpError(400, `tools must be systems from the list: ${choices().map(s => s.id).join(', ')}`);
-      const to = safeName(name), updates = new Map([[seriesDir, { ...seriesSettings(seriesDir), visible_to, ...(uses && { tools: uses.map((t: string) => choice(t)!.id) }) }]]);
+      if (uses !== undefined && (!Array.isArray(uses) || !uses.every(t => typeof t === 'string' && choice(t)))) throw new HttpError(400, `tools must be connections from the list: ${choices().map(s => s.id).join(', ')}`);
+      const to = safeName(name), updates = new Map([[seriesDir, {
+        ...seriesSettings(seriesDir), visible_to, ...(uses && { tools: uses.map((t: string) => choice(t)!.id) }), ...(chosen !== undefined && { skills: checkChosen(chosen) }),
+      }]]);
       if (to !== series) {
         if (existsSync(join(workspaceDir, to))) throw new HttpError(409, `${to} exists`);
         if (active.has(seriesDir) || instances(seriesDir).some(i => debounce.has(i.dir))) throw new HttpError(409, 'wait for the run to end');
@@ -403,9 +379,10 @@ async function admin(me: Me, req: IncomingMessage, res: ServerResponse, url: URL
   send(res, 200, 'ok');
 }
 
-// The systems catalog: anyone signed in may list the names, to choose a series' Tool use; only admins see the rest and change it.
+// The connections catalog: anyone signed in may list the names, to choose a series' Tool use; only admins see the rest and change it.
 async function catalog(me: Me, req: IncomingMessage, res: ServerResponse, url: URL) {
   const [id = '', action] = url.pathname.split('/').slice(2).map(decodeURIComponent);
+  if (url.pathname === '/skills' && req.method === 'GET') return send(res, 200, skills().map(({ dir, ...s }) => s));
   if (!id && req.method === 'GET') return send(res, 200, me.role === 'admin' ? systemCatalog() : choices());
   if (me.role !== 'admin') throw new HttpError(403, 'admins only');
   if (!id && req.method === 'POST') return send(res, 200, systemView(saveSystem(undefined, JSON.parse((await body(req)).toString()), me.email)));
@@ -417,9 +394,9 @@ async function catalog(me: Me, req: IncomingMessage, res: ServerResponse, url: U
     const need = missing(s, id);
     if (need.length) throw new HttpError(409, `${s?.name ?? builtIn(id)!.name} still needs ${need.join(', ')}`);
     try {
-      return send(res, 200, await (tester(s!.id) ?? testLogin)(s!));
+      return send(res, 200, await (kindOf(s!) === 'm365' ? testM365 : testLogin)(s!));
     } catch (e) {
-      throw new HttpError(502, (e as Error).message.split('\n')[0]);
+      throw new HttpError(502, (e as Error).message.split('\n').slice(0, 5).join('\n'));
     }
   }
   if (!s) throw new HttpError(404, `${builtIn(id)!.name} is not set up`);
@@ -444,9 +421,9 @@ createServer({ requestTimeout: 60 * 60_000 }, async (req, res) => {
     else if (url.pathname.startsWith('/preview/')) await file(me, res, url, true);
     else if (url.pathname.startsWith('/api/')) await people(me, req, res, url);
     else if (url.pathname === '/users' || url.pathname.startsWith('/users/')) await admin(me, req, res, url);
-    else if (url.pathname === '/systems' || url.pathname.startsWith('/systems/')) await catalog(me, req, res, url);
+    else if (url.pathname === '/systems' || url.pathname.startsWith('/systems/') || url.pathname === '/skills') await catalog(me, req, res, url);
     else throw new HttpError(404, 'not found');
   } catch (err) {
     send(res, err instanceof HttpError ? err.status : 500, (err as Error).message);
   }
-}).listen(port, host, () => console.log(`rollforward on http://${host}:${port}, data in ${root}, sign-in ${mode}${process.env.RF_TODAY ? `, tools take today as ${process.env.RF_TODAY} (RF_TODAY)` : ''}`));
+}).listen(port, host, () => console.log(`rollforward on http://${host}:${port}, data in ${root}, sign-in ${mode}${process.env.RF_TODAY ? `, skills take today as ${process.env.RF_TODAY} (RF_TODAY)` : ''}`));

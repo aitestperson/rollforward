@@ -2,45 +2,37 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { HttpError } from './store.ts';
 import { key, readJson, writeJson } from './system.ts';
 
-// The systems the agent may use, kept by admins. Three kinds:
-// - web: a site the agent, or a tool, uses in a browser the server runs, signed in as a shared service account. The server keeps the
-//   password sealed and types it in itself, so it never reaches the agent. `writes` says which requests count as writes ("POST
-//   */save*", or a bare URL pattern for any method); with none, every request but GET, HEAD and OPTIONS does.
+// The connections the agent may use, kept by admins: how to reach a system and the credentials for it. Skills say what to fetch
+// through them. Two kinds:
+// - web: a site the agent uses in a browser the server runs, signed in as a shared service account. The server keeps the password
+//   sealed and types it in itself (with any code the site mails, see signin.ts), so it never reaches the agent. `writes` says which
+//   requests count as writes ("POST */save*", or a bare URL pattern for any method); with none, every request but GET, HEAD and
+//   OPTIONS does.
 // - m365: an app registered in Microsoft Entra ID, whose client secret lets the server read OneDrive files or a mailbox through
-//   Microsoft Graph. Tools use these; series don't choose them.
-// - source: data a tool fetches through an m365 system, such as a OneDrive folder or a mailbox's mail; it holds only settings.
-// Company values (addresses, links, ids) live in the data root's .rf/systems.json, set from the Systems page, never in this code.
+//   Microsoft Graph (see m365.ts).
+// Company values (addresses, mailboxes, ids) live in the data root's .rf/systems.json, set from the Systems page, never in this code.
 
-export type Kind = 'web' | 'm365' | 'source';
-export type Field = { key: string; label: string; hint?: string };
+export type Kind = 'web' | 'm365';
+export type Field = { key: string; label: string; hint?: string; optional?: boolean };
 export type System = {
   id: string; name: string; kind?: Kind; url?: string; username?: string; password?: string;
   tenant?: string; client_id?: string; settings?: Record<string, string>;
   login?: { user?: string; pass?: string; submit?: string }; writes: string[]; extra_origins: string[];
   updated_by?: string; updated_at?: string;
 };
-type BuiltIn = { id: string; name: string; kind: Kind; internal?: boolean; uses?: string; fields?: Field[] };
+type BuiltIn = { id: string; name: string; kind: Kind; fields?: Field[] };
 
-// The company's systems, always offered. A series may choose one before it is set up; a tool or the agent can use it only once it is.
+const OTP_MAIL: Field = { key: 'otp_mail', label: 'Sign-in codes arrive in', hint: 'The id of the m365 connection whose mailbox gets the codes the site mails, such as m365-mail', optional: true };
+
+// The company's connections, always offered. A series may choose one before it is set up; the agent can use it only once it is.
 export const BUILT_IN: BuiltIn[] = [
   { id: 'e1', name: 'E1', kind: 'web' },
   { id: 'dms', name: 'DMS', kind: 'web' },
   { id: 'xts', name: 'XTS', kind: 'web' },
-  { id: 'm365-mail', name: 'M365 Mail', kind: 'm365', internal: true, fields: [{ key: 'mailbox', label: 'Mailbox', hint: 'The mailbox this app reads, such as a shared inbox or a person\'s' }] },
-  { id: 'm365-files', name: 'M365 OneDrive', kind: 'm365', internal: true },
-  { id: 'jde-ar', name: 'JDE A/R', kind: 'source', uses: 'm365-files', fields: [
-    { key: 'folder_450', label: 'Company 450 folder link', hint: 'A OneDrive or SharePoint link to the folder of AR aging reports; a year folder is followed to the year of the date asked' },
-    { key: 'folder_236', label: 'Company 236 folder link' }] },
-  { id: 'walmart', name: 'Walmart Retail Link', kind: 'source', uses: 'm365-files', fields: [
-    { key: 'file', label: 'Paid History workbook link' }, { key: 'sheets', label: 'Sheets', hint: 'Comma-separated, such as 236, 450' },
-    { key: 'date_column', label: 'Date column', hint: 'Such as Date Paid' }, { key: 'days', label: 'Days back', hint: 'Rows dated within this many days up to the date asked' }] },
-  { id: 'kohls', name: 'Kohls', kind: 'source', uses: 'm365-mail', fields: [{ key: 'subject', label: 'Subject contains' }] },
-  { id: 'target', name: 'Target', kind: 'web', fields: [
-    { key: 'otp_mail', label: 'Verification codes arrive in', hint: 'The id of an m365 system, such as m365-mail' },
-    { key: 'report', label: 'Report page', hint: 'The address of the Specific Document Search card on Greenfield' }] },
-  { id: 'costco', name: 'Costco', kind: 'web', fields: [
-    { key: 'otp_mail', label: 'Verification codes arrive in', hint: 'The id of an m365 system, such as m365-mail' },
-    { key: 'portal', label: 'Vendor Accounting Portal', hint: 'Its address, opened after signing in to the hub' }] },
+  { id: 'm365-mail', name: 'M365 Mail', kind: 'm365', fields: [{ key: 'mailbox', label: 'Mailbox', hint: 'The one mailbox this app reads, such as a shared inbox or a person\'s' }] },
+  { id: 'm365-files', name: 'M365 OneDrive', kind: 'm365', fields: [{ key: 'test_link', label: 'Test link', hint: 'A OneDrive or SharePoint folder link that Test reads', optional: true }] },
+  { id: 'target', name: 'Target', kind: 'web', fields: [OTP_MAIL] },
+  { id: 'costco', name: 'Costco', kind: 'web', fields: [OTP_MAIL] },
   { id: 'burlington', name: 'Burlington', kind: 'web' },
 ];
 
@@ -71,8 +63,7 @@ export function missing(s: System | undefined, id = s?.id ?? ''): string[] {
     if (!s.client_id) need.push('client id');
     if (!s.password) need.push('client secret');
   }
-  for (const f of b?.fields ?? []) if (kind !== 'web' && !s.settings?.[f.key]) need.push(f.label.toLowerCase());
-  if (b?.uses && missing(saved(b.uses), b.uses).length) need.push(`${builtIn(b.uses)!.name} set up`);
+  for (const f of b?.fields ?? []) if (!f.optional && !s.settings?.[f.key]) need.push(f.label.toLowerCase());
   return need;
 }
 
@@ -88,7 +79,7 @@ export const savedSystem = saved;
 // What Tool use offers: the built-in systems a series may choose, then any others admins added, each saying whether it is ready.
 export function choices(): { id: string; name: string; configured: boolean }[] {
   const set = systems();
-  return [...BUILT_IN.filter(b => !b.internal).map(b => set.find(s => s.id === b.id) ?? b), ...set.filter(s => !builtIn(s.id))]
+  return [...BUILT_IN.map(b => set.find(s => s.id === b.id) ?? b), ...set.filter(s => !builtIn(s.id))]
     .map(s => ({ id: s.id, name: s.name, configured: !missing(set.find(x => x.id === s.id), s.id).length }));
 }
 
@@ -101,8 +92,8 @@ export function choice(id: string): { id: string; name: string; configured: bool
 export function catalog() {
   const set = systems();
   return [...BUILT_IN.map(b => ({ b, s: set.find(s => s.id === b.id) })), ...set.filter(s => !builtIn(s.id)).map(s => ({ b: undefined, s }))]
-    .map(({ b, s }) => ({ ...(s ? view(s) : {}), id: b?.id ?? s!.id, name: s?.name ?? b!.name, kind: s ? kindOf(s) : b!.kind, built_in: !!b, internal: !!b?.internal,
-      uses: b?.uses, fields: b?.fields ?? [], saved: !!s, configured: !missing(s, b?.id ?? s?.id).length, missing: missing(s, b?.id ?? s?.id) }));
+    .map(({ b, s }) => ({ ...(s ? view(s) : {}), id: b?.id ?? s!.id, name: s?.name ?? b!.name, kind: s ? kindOf(s) : b!.kind, built_in: !!b,
+      fields: b?.fields ?? [], saved: !!s, configured: !missing(s, b?.id ?? s?.id).length, missing: missing(s, b?.id ?? s?.id) }));
 }
 
 export function view(s: System) {
@@ -188,10 +179,15 @@ export function removeSystem(id: string) {
 
 const glob = (pattern: string) => new RegExp(`^${pattern.split('*').map(p => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`, 'i');
 
-export function isWrite(s: System, method: string, url: string): boolean {
-  if (!s.writes.length) return !['GET', 'HEAD', 'OPTIONS'].includes(method);
-  return s.writes.some(w => {
+// Whether a request matches one of `patterns`: "POST */save*", or a bare URL pattern for any method.
+export function matches(patterns: string[], method: string, url: string): boolean {
+  return patterns.some(w => {
     const [m, p] = /^[A-Z]+\s+\S/.test(w) ? w.split(/\s+/, 2) : ['*', w];
     return (m === '*' || m === method) && glob(p).test(url);
   });
+}
+
+export function isWrite(s: System, method: string, url: string): boolean {
+  if (!s.writes.length) return !['GET', 'HEAD', 'OPTIONS'].includes(method);
+  return matches(s.writes, method, url);
 }

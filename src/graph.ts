@@ -9,7 +9,7 @@ const tokens = new Map<string, { token: string; exp: number; sealed: string }>()
 // Tests point these at a stand-in.
 export const endpoints = { login: 'https://login.microsoftonline.com', graph: GRAPH };
 
-async function token(s: System): Promise<string> {
+export async function token(s: System): Promise<string> {
   const t = tokens.get(s.id);
   if (t && t.exp > Date.now() && t.sealed === s.password) return t.token;
   const r = await fetch(`${endpoints.login}/${s.tenant}/oauth2/v2.0/token`, {

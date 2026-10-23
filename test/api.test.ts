@@ -167,7 +167,7 @@ test('series settings write series.json; a rename moves the folder and rewrites 
   const put = (name: string, body: object) => call('PUT', at(name), JSON.stringify(body));
   assert.equal((await put(monthly, { name: monthly, visible_to: [series] })).status, 200);
   assert.equal((await put(series, { name: series, visible_to: [monthly] })).status, 200);
-  assert.deepEqual(JSON.parse(readFileSync(join(root, 'larkfield', series, 'series.json'), 'utf8')), { visible_to: [monthly], tools: [] });
+  assert.deepEqual(JSON.parse(readFileSync(join(root, 'larkfield', series, 'series.json'), 'utf8')), { visible_to: [monthly], tools: [], skills: { 'e1-automation': {} } });
   assert.deepEqual((await shown(series)).visible_to, [monthly]);
   assert.deepEqual((await shown(monthly)).reads, [series]);
 
@@ -255,9 +255,9 @@ test('each person sees only the workspaces they own; an admin sees all and can g
 
 test('Tool use always offers E1, DMS and XTS; admins set them up; a series may choose none, or one not set up yet', async () => {
   const b = sessionOf(await login(bob))!;
-  const offered = [['e1', 'E1'], ['dms', 'DMS'], ['xts', 'XTS'], ['jde-ar', 'JDE A/R'], ['walmart', 'Walmart Retail Link'], ['kohls', 'Kohls'], ['target', 'Target'], ['costco', 'Costco'], ['burlington', 'Burlington']]
+  const offered = [['e1', 'E1'], ['dms', 'DMS'], ['xts', 'XTS'], ['m365-mail', 'M365 Mail'], ['m365-files', 'M365 OneDrive'], ['target', 'Target'], ['costco', 'Costco'], ['burlington', 'Burlington']]
     .map(([id, name]) => ({ id, name, configured: false }));
-  assert.deepEqual(await json('/systems', b), offered, 'anyone signed in sees the choices, not the Microsoft 365 apps behind them');
+  assert.deepEqual(await json('/systems', b), offered, 'anyone signed in sees the connections to choose from');
   const sys = { name: 'E1', url: 'http://127.0.0.1:9/', username: 'svc', password: 'S3cret!' };
   assert.equal((await call('PUT', '/systems/e1', JSON.stringify(sys), b)).status, 403);
   assert.equal((await call('PUT', '/systems/e1', JSON.stringify({ ...sys, password: '' }))).status, 200, 'a built-in system may be saved part done');
@@ -278,6 +278,25 @@ test('Tool use always offers E1, DMS and XTS; admins set them up; a series may c
   assert.deepEqual((await shown(series)).tools, []);
   assert.equal((await call('DELETE', '/systems/e1')).status, 200);
   assert.equal((await json('/systems', b))[0].configured, false, 'clearing E1 leaves it on the list, not set up');
+});
+
+test('Skill use: a series chooses skills and gives each its own settings; one saved before Skill use keeps e1-automation', async () => {
+  const b = sessionOf(await login(bob))!;
+  const listed = await json('/skills', b);
+  assert.deepEqual(listed.find((s: { id: string }) => s.id === 'kohls-open-ap'), {
+    id: 'kohls-open-ap', name: 'kohls-open-ap', description: listed.find((s: { id: string }) => s.id === 'kohls-open-ap').description,
+    connections: ['m365-mail'], settings: [{ key: 'subject', label: 'Subject contains', hint: 'Words the mail\'s subject always has' }], flows: [],
+  });
+  assert.deepEqual((await shown(series)).skills, { 'e1-automation': {} }, 'as every run loaded it then');
+  const put = (body: object) => call('PUT', at(series), JSON.stringify({ name: series, visible_to: [], ...body }));
+  assert.equal((await put({ skills: { nope: {} } })).status, 400);
+  assert.equal((await put({ skills: { 'kohls-open-ap': { mailbox: 'x' } } })).status, 400, 'only the settings the skill declares');
+  assert.equal((await put({ tools: ['m365-mail'], skills: { 'kohls-open-ap': { subject: 'Open AP report' }, 'costco-ap': {} } })).status, 200, 'a skill may be chosen before its settings are filled in');
+  assert.deepEqual((await shown(series)).skills, { 'kohls-open-ap': { subject: 'Open AP report' }, 'costco-ap': {} });
+  assert.equal((await put({ visible_to: ['*'] })).status, 200);
+  assert.deepEqual(Object.keys((await shown(series)).skills), ['kohls-open-ap', 'costco-ap'], 'Visibility alone leaves Skill use as it was');
+  assert.equal((await put({ skills: {} })).status, 200);
+  assert.deepEqual((await shown(series)).skills, {}, 'none at all, not even e1-automation, once a series has chosen');
 });
 
 test('an admin can disable someone, which ends their sessions and stops their sign-in; the CLI does the same', async () => {

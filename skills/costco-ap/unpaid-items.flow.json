@@ -1,0 +1,13 @@
+{
+ "connection": "costco",
+ "reads_that_post": ["POST */as/token.oauth2", "POST */saml/*", "POST */saml2/*", "POST */idp/*", "POST */sso*", "POST */vp/index.html*"],
+ "steps": [
+  { "goto": "{portal}" },
+  { "wait": { "role": "radio", "name": "Unpaid Items" }, "timeout": 120000 },
+  { "click": { "role": "radio", "name": "Unpaid Items" } },
+  { "pause": 1000 },
+  { "wait": { "gone": ".sapUiLocalBusyIndicator, .sapMBusyIndicator, .sapUiBlockLayer" }, "timeout": 180000 },
+  { "click": { "css": "button[title=Download]" } },
+  { "download": { "text": "Download List as CSV" }, "save": "Costco unpaid items {today}.csv" }
+ ]
+}

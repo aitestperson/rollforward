@@ -2,9 +2,11 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, posix } from 'node:path';
 import { HttpError, type Entry, type Instance } from './store.ts';
-import { choice, isWrite, password, system, type System } from './systems.ts';
+import { choice, isWrite, kindOf, matches, password, system, type System } from './systems.ts';
+import { adapter, type Codes } from './signin.ts';
+import { runFlow, saveNew, type Flow } from './flow.ts';
 
-// The agent's browser for the systems in its series' Tool use. It runs in the server, not the agent: the server signs in with the
+// The agent's browser for the web connections in its series' Tool use. It runs in the server, not the agent: the server signs in with the
 // system's service account, so the password never reaches the agent, and it stops every request that is a write (see systems.ts)
 // unless a person approved it. The agent drives it with `rf browse SYSTEM ACTION ...`; a write it wants made it proposes as steps,
 // which wait for a person, and on approval the server makes them in a browser of its own.
@@ -28,14 +30,17 @@ export async function closeBrowser() {
   await (await b)?.close();
 }
 
-type Session = { sys: System; context: BrowserContext; page: Page; writes: boolean; blocked: string[] };
+// `reads`: while a flow runs, the requests its file names as reads that post (see flow.ts), let through though they look like writes.
+type Session = { sys: System; context: BrowserContext; page: Page; writes: boolean; reads: string[]; blocked: string[]; codes: Codes };
+// A skill's flow, found by its name ("costco-ap/payments") among the series' skills, with the skill's settings as its variables.
+export type FlowLookup = (name: string) => { flow: Flow; vars: Record<string, string> };
 export type Step = { do: string; target?: string; value?: string };
 
 async function openContext(sys: System): Promise<Session> {
   const context = await newContext();
   context.setDefaultTimeout(ACTION_MS);
   const origins = new Set([new URL(sys.url).origin, ...sys.extra_origins.map(o => new URL(o).origin)]);
-  const s: Session = { sys, context, page: await context.newPage(), writes: false, blocked: [] };
+  const s: Session = { sys, context, page: await context.newPage(), writes: false, reads: [], blocked: [], codes: new Set() };
   await context.route('**/*', route => {
     const r = route.request(), u = new URL(r.url());
     if (!/^https?:$/.test(u.protocol)) return route.continue();
@@ -43,7 +48,7 @@ async function openContext(sys: System): Promise<Session> {
       s.blocked.push(`Stopped a request to ${u.origin}: the browser stays on ${[...origins].join(', ')}.`);
       return route.abort('blockedbyclient');
     }
-    if (!s.writes && isWrite(sys, r.method(), r.url())) {
+    if (!s.writes && isWrite(sys, r.method(), r.url()) && !matches(s.reads, r.method(), r.url())) {
       s.blocked.push(`Stopped ${r.method()} ${u.pathname}: it is a write to ${sys.name}. Propose it with rf browse ${sys.id} propose, for a person to approve.`);
       return route.abort('blockedbyclient');
     }
@@ -59,6 +64,8 @@ async function login(s: Session) {
   const { sys, page } = s, passSel = sys.login?.pass || 'input[type=password]';
   s.writes = true; // the sign-in form posts
   try {
+    const a = adapter(sys.id);
+    if (a) return await a.signIn(page, sys, s.codes).catch(e => { throw blockedToo(s, e); });
     await page.goto(sys.url, { waitUntil: 'domcontentloaded' });
     const pass = page.locator(passSel).first();
     if (!(await pass.count())) return; // no sign-in page
@@ -73,6 +80,13 @@ async function login(s: Session) {
   } finally {
     s.writes = false;
   }
+}
+
+// An error, with the requests the browser stopped meanwhile, as they are the likely cause (such as a sign-in host not yet among the
+// system's other addresses).
+function blockedToo(s: Session, e: unknown): HttpError {
+  const err = e as Error & { status?: number }, stopped = [...new Set(s.blocked.splice(0))];
+  return new HttpError(err.status ?? 502, err.message.split('\n')[0] + (stopped.length ? `\n${stopped.slice(0, 8).join('\n')}` : ''));
 }
 
 export async function testLogin(sys: System): Promise<string> {
@@ -133,7 +147,7 @@ async function read(s: Session): Promise<string> {
 }
 
 // A path under the instance's working/, where the agent's files go.
-function workingFile(instDir: string, file: string | undefined): string {
+export function workingFile(instDir: string, file: string | undefined): string {
   const rel = posix.normalize(String(file ?? '').replace(/^working\//, ''));
   if (!file || rel.startsWith('..') || rel.startsWith('/') || /^[a-z]:/i.test(rel)) throw new HttpError(400, 'FILE is a path under your working/, such as "E1 vouchers 09.06.2026.csv"');
   const path = join(instDir, 'working', rel);
@@ -160,15 +174,18 @@ export class Browsing {
   actions = 0;
   inst: Instance;
   tools: string[];
-  constructor(inst: Instance, tools: string[]) {
+  flows?: FlowLookup;
+  constructor(inst: Instance, tools: string[], flows?: FlowLookup) {
     this.inst = inst;
     this.tools = tools;
+    this.flows = flows;
   }
 
   private allowed(name: string): System {
     const c = choice(name), sys = system(name);
     if (!c || !this.tools.includes(c.id)) throw new HttpError(403, `${name} is not in this series' Tool use${this.tools.length ? `; it has ${this.tools.map(t => choice(t)?.name ?? t).join(', ')}` : ', which is empty'}.`);
     if (!sys) throw new HttpError(409, `${c.name} is chosen for this series but not set up yet: an admin adds its address and service account under Systems.`);
+    if (kindOf(sys) !== 'web') throw new HttpError(400, `${sys.name} is not a website: ${sys.id === 'm365-mail' ? 'rf mail' : 'rf files'} reads it`);
     return sys;
   }
 
@@ -176,8 +193,13 @@ export class Browsing {
     let s = this.sessions.get(sys.id);
     if (!s) {
       s = await openContext(sys);
+      try {
+        await login(s);
+      } catch (e) {
+        await s.context.close().catch(() => {});
+        throw e;
+      }
       this.sessions.set(sys.id, s);
-      await login(s);
     }
     return s;
   }
@@ -186,6 +208,7 @@ export class Browsing {
     const sys = this.allowed(name);
     if (++this.actions > MAX_ACTIONS) throw new HttpError(429, `this run has used its ${MAX_ACTIONS} browser actions`);
     if (action === 'propose') return this.propose(sys, args[0], args[1]);
+    if (action === 'run') return this.run(sys, args);
     const s = await this.session(sys), { page } = s;
     const ref = (n: string | undefined) => {
       if (!/^\d+$/.test(n ?? '')) throw new HttpError(400, `${action} takes an element number from look`);
@@ -234,10 +257,42 @@ export class Browsing {
       case 'screenshot':
         await page.screenshot({ path: workingFile(this.inst.dir, args[0]), fullPage: true });
         return { status: 200, text: `Saved working/${args[0]}.` };
-      default: throw new HttpError(400, `rf browse SYSTEM open [PATH] | look | click N | type N TEXT | select N OPTION | press KEY | back | download N|PATH FILE | screenshot FILE | propose "WHAT" STEPS.json`);
+      default: throw new HttpError(400, `rf browse SYSTEM open [PATH] | look | click N | type N TEXT | select N OPTION | press KEY | back | download N|PATH FILE | screenshot FILE | run SKILL/FLOW [--var NAME=VALUE ...] | propose "WHAT" STEPS.json`);
     }
     if (s.blocked.length) note = s.blocked.splice(0).join('\n') + '\n\n';
     return { status: 200, text: note + (await look(s)) };
+  }
+
+  // A skill's flow, in this run's signed-in session for the system. Its requests are stopped like any other; a failure leaves a
+  // screenshot in working/ and names the step.
+  private async run(sys: System, args: string[]): Promise<{ status: number; text: string }> {
+    const name = args[0] ?? '', vars: Record<string, string> = {};
+    for (let i = 1; i < args.length; i++) {
+      const m = args[i] === '--var' ? /^(\w+)=(.*)$/s.exec(args[++i] ?? '') : null;
+      if (!m) throw new HttpError(400, 'run SKILL/FLOW [--var NAME=VALUE ...]');
+      vars[m[1]] = m[2];
+    }
+    if (!this.flows) throw new HttpError(403, 'this run has no skills with flows');
+    const found = this.flows(name);
+    if (found.flow.connection !== sys.id) throw new HttpError(400, `${name} is a flow for ${found.flow.connection}, not ${sys.id}`);
+    const s = await this.session(sys), t0 = Date.now();
+    s.reads = found.flow.reads_that_post ?? [];
+    try {
+      const out = await runFlow(s.page, found.flow, {
+        base: sys.url!, dir: join(this.inst.dir, 'working'), vars: { ...found.vars, today: new Date().toLocaleDateString('sv'), ...vars },
+        challenge: () => adapter(sys.id)?.challenge?.(s.page, sys, s.codes, on => { s.writes = on; }) ?? Promise.resolve(false),
+      });
+      this.inst.append('agent', 'flow', { system: sys.id, flow: name, vars, files: out.files, steps: out.steps, ms: Date.now() - t0 });
+      return { status: 200, text: `Ran ${name} on ${sys.name}: ${out.steps} steps. Saved: ${out.files.join(', ') || 'nothing'}.` };
+    } catch (e) {
+      const err = blockedToo(s, e);
+      const shot = await s.page.screenshot({ fullPage: true }).then(b => saveNew(join(this.inst.dir, 'working'), `${name.replace('/', ' ')} stopped.png`, b), () => '');
+      if (shot) err.message += `\nA screenshot of the page is ${shot}.`;
+      this.inst.append('agent', 'flow', { system: sys.id, flow: name, vars, error: err.message, ms: Date.now() - t0 });
+      throw err;
+    } finally {
+      s.reads = [];
+    }
   }
 
   private async propose(sys: System, description: string | undefined, stepsJson: string | undefined): Promise<{ status: number; text: string }> {

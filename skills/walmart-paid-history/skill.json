@@ -1,0 +1,9 @@
+{
+ "connections": ["m365-files"],
+ "settings": [
+  { "key": "file", "label": "Paid History workbook link", "hint": "A OneDrive or SharePoint link to the workbook" },
+  { "key": "sheets", "label": "Sheets", "hint": "Comma-separated, such as 236, 450" },
+  { "key": "date_column", "label": "Date column", "hint": "Such as Date Paid" },
+  { "key": "days", "label": "Days back", "hint": "Rows dated within this many days up to the day asked, such as 7" }
+ ]
+}

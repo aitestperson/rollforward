@@ -752,9 +752,18 @@ function renderPv() {
     h += '<div class="pvb vl">';
     if (s.kind === 'workspace' && me.role === 'admin') h += `<h3>Owner</h3><div class="sub">Only the owner and admins can see this workspace and its series.</div><div class="row2"><select id="wowner"><option value="">No owner (admins only)</option>${s.users.map(u => `<option value="${esc(u.email)}" ${u.email === s.owner ? 'selected' : ''}>${esc(u.name ?? u.email)} · ${esc(u.email)}</option>`).join('')}</select><button class="btn" data-act="saveowner">Save</button></div><hr>`;
     if (s.kind === 'series') h += `<h3>Name</h3><input type="text" id="sname" value="${esc(s.name)}">`
-      + `<h3>Tool use</h3><div class="sub">Systems the agent may use in a browser for this series. It signs in with the system's service account, and each write waits for a person to approve it.</div>`
+      + `<h3>Tool use</h3><div class="sub">Connections the agent may use for this series: websites it uses in a browser the server runs, and Microsoft 365 mail and files it reads. The server signs in with each one's account, and each write waits for a person to approve it.</div>`
       + s.catalog.map(t => `<label><input type="checkbox" class="tool" value="${esc(t.id)}" ${s.tools.includes(t.id) ? 'checked' : ''}> ${esc(t.name)}${t.configured ? '' : ' <span class="sub">· not set up yet</span>'}</label>`).join('')
-      + (s.catalog.some(t => !t.configured) ? `<div class="sub">A system not set up yet can be chosen now; the agent can use it once ${me.role === 'admin' ? 'you add' : 'an admin adds'} its address and service account under Systems.</div>` : '')
+      + (s.catalog.some(t => !t.configured) ? `<div class="sub">A connection not set up yet can be chosen now; the agent can use it once ${me.role === 'admin' ? 'you set it up' : 'an admin sets it up'} under Systems.</div>` : '')
+      + `<h3>Skill use</h3><div class="sub">What the agent knows how to fetch or do, through the connections above. Choosing one ticks the connections it uses; its settings are this series' own.</div>`
+      + s.skillList.map(k => {
+        const on = !!s.skills[k.id], uses = k.connections.map(c => s.catalog.find(t => t.id === c)?.name ?? c);
+        return `<div class="skill-row"><label><input type="checkbox" class="skill" value="${esc(k.id)}" data-uses="${esc(k.connections.join(','))}" ${on ? 'checked' : ''}> ${esc(k.name)}</label>`
+          + `<div class="sub">${esc(k.description.length > 180 ? k.description.slice(0, 180) + '…' : k.description)}${uses.length ? ` Uses ${esc(uses.join(', '))}.` : ''}</div>`
+          + `<div class="sk-fields" ${on ? '' : 'hidden'} style="display:grid;gap:6px;margin:4px 0 8px 22px">`
+          + k.settings.map(f => `<label style="display:grid;gap:4px">${esc(f.label)}${f.optional ? ' <span class="sub">(optional)</span>' : ''}<input type="text" class="sk-set" data-skill="${esc(k.id)}" data-key="${esc(f.key)}" value="${esc(s.skills[k.id]?.[f.key] ?? '')}" autocomplete="off">${f.hint ? `<span class="sub">${esc(f.hint)}</span>` : ''}</label>`).join('')
+          + '</div></div>';
+      }).join('')
       + `<h3>Visibility</h3><div class="sub">Other series that can see this one</div>` + visibilityHtml(s)
       + (s.reads.length ? `<div class="sub">This series can see ${esc(s.reads.join(', '))}.</div>` : '')
       + '<div><button class="btn primary" data-act="savesettings">Save</button></div><hr>';
@@ -806,11 +815,11 @@ async function openWorkspaceSettings() {
   renderPv();
 }
 
-const KINDS = { web: 'Website', m365: 'Microsoft 365 app', source: 'Data source' };
+const KINDS = { web: 'Website', m365: 'Microsoft 365 app' };
 
 function systemsHtml(s) {
   if (!s.edit) {
-    return `<div class="sub">Company systems, with the accounts and settings the server uses for them. Series choose websites and data sources under Tool use; the Microsoft 365 apps are how data sources and sign-in codes are read.</div>`
+    return `<div class="sub">Company connections, with the accounts and secrets the server uses for them. Series choose them under Tool use, and skills fetch through them; a site that mails a sign-in code has it read from M365 Mail.</div>`
       + `<table class="ut"><tr><th>System</th><th>Kind</th><th>State</th><th></th></tr>`
       + s.list.map(x => `<tr><td><b>${esc(x.name)}</b>${x.kind === 'web' && x.url ? `<div class="sub">${esc(x.url)}</div>` : ''}</td><td class="sub">${KINDS[x.kind]}</td>`
         + `<td>${x.configured ? 'Ready' : `<span class="sub">${x.saved ? `needs ${esc(x.missing.join(', '))}` : 'not set up yet'}</span>`}</td>`
@@ -821,7 +830,7 @@ function systemsHtml(s) {
   const f = (id, label, v = '', ph = '', type = 'text') => `<label style="display:grid;gap:4px">${label}<input type="${type}" id="${id}" value="${esc(v)}" placeholder="${esc(ph)}" autocomplete="off"></label>`;
   const secret = (label) => f('ys-pass', label, '', e.has_password ? 'Saved. Leave empty to keep it.' : '', 'password');
   const fields = (e.fields ?? []).map(x => `<label style="display:grid;gap:4px">${esc(x.label)}<input type="text" class="ys-set" data-key="${esc(x.key)}" value="${esc(e.settings?.[x.key] ?? '')}" autocomplete="off">${x.hint ? `<span class="sub">${esc(x.hint)}</span>` : ''}</label>`).join('');
-  let h = `<h3>${e.saved ? `Edit ${esc(e.name)}` : e.id ? `Set up ${esc(e.name)}` : 'Add a website'}</h3><div class="sub">${KINDS[kind]}${e.uses ? `, read through ${esc(s.list.find(x => x.id === e.uses)?.name ?? e.uses)}` : ''}${e.missing?.length && e.id ? ` · needs ${esc(e.missing.join(', '))}` : ''}</div>`;
+  let h = `<h3>${e.saved ? `Edit ${esc(e.name)}` : e.id ? `Set up ${esc(e.name)}` : 'Add a website'}</h3><div class="sub">${KINDS[kind]}${e.missing?.length && e.id ? ` · needs ${esc(e.missing.join(', '))}` : ''}</div>`;
   if (!e.built_in) h += f('ys-name', 'Name', e.name, 'E1');
   if (kind === 'web') {
     const advanced = !!(e.writes?.length || e.extra_origins?.length || e.login?.user || e.login?.pass || e.login?.submit);
@@ -835,7 +844,7 @@ function systemsHtml(s) {
   } else if (kind === 'm365') {
     h += f('ys-tenant', 'Directory (tenant) ID', e.tenant, '00000000-0000-0000-0000-000000000000') + f('ys-client', 'Application (client) ID', e.client_id, '00000000-0000-0000-0000-000000000000')
       + secret('Client secret') + fields + `<div class="sub">The app reads through Microsoft Graph with its own application permissions, granted by an admin.</div>`;
-  } else h += fields;
+  }
   return h + `<div class="row2"><button class="btn primary" data-act="savesys">Save</button>${e.configured ? '<button class="btn" data-act="testsys">Test</button>' : ''}`
     + `${e.saved ? `<button class="btn danger" data-act="delsys">${e.built_in ? 'Clear' : 'Delete'}</button>` : ''}<button class="btn" data-act="systems" style="margin-left:auto">Back</button></div>`;
 }
@@ -911,8 +920,8 @@ document.addEventListener('click', async ev => {
   if (act === 'preview') await preview(el.dataset.file, data.doc.items.find(i => i.id === el.dataset.item));
   if (act === 'unpv') { pv = null; renderPv(); }
   if (act === 'settings') {
-    const w = tree.find(w => w.workspace === cur.workspace), s = w.series.find(s => s.series === cur.series), catalog = await api('/systems');
-    pv = { title: 'Series settings', settings: { kind: 'series', name: s.series, others: w.series.map(x => x.series).filter(n => n !== s.series), chosen: s.visible_to, tools: s.tools, catalog, reads: s.reads, archived: s.archived } };
+    const w = tree.find(w => w.workspace === cur.workspace), s = w.series.find(s => s.series === cur.series), [catalog, skillList] = await Promise.all([api('/systems'), api('/skills')]);
+    pv = { title: 'Series settings', settings: { kind: 'series', name: s.series, others: w.series.map(x => x.series).filter(n => n !== s.series), chosen: s.visible_to, tools: s.tools, catalog, skills: s.skills ?? {}, skillList, reads: s.reads, archived: s.archived } };
     renderPv();
   }
   if (act === 'vis-fold') {
@@ -988,7 +997,9 @@ document.addEventListener('click', async ev => {
     const name = $('#sname').value.trim();
     const visible_to = $('#vis-all').checked ? ['*'] : [...document.querySelectorAll('#pv input.vis:checked')].map(i => i.value);
     const tools = [...document.querySelectorAll('#pv input.tool:checked')].map(i => i.value);
-    await api(seriesPath(cur), { method: 'PUT', body: JSON.stringify({ name, visible_to, tools, archived: pv.settings.archived }) });
+    const skills = Object.fromEntries([...document.querySelectorAll('#pv input.skill:checked')].map(i => [i.value,
+      Object.fromEntries([...document.querySelectorAll(`#pv .sk-set[data-skill="${CSS.escape(i.value)}"]`)].map(f => [f.dataset.key, f.value.trim()]))]));
+    await api(seriesPath(cur), { method: 'PUT', body: JSON.stringify({ name, visible_to, tools, skills, archived: pv.settings.archived }) });
     pv = null;
     renderPv();
     if (name !== cur.series) return go(cur.workspace, name, cur.label);
@@ -1067,6 +1078,12 @@ $('#pv').addEventListener('change', async e => {
     return syncVisibility();
   }
   if (e.target.matches('input.vis')) return syncVisibility();
+  // Choosing a skill shows its settings and ticks the connections it uses.
+  if (e.target.matches('input.skill')) {
+    e.target.closest('.skill-row').querySelector('.sk-fields').hidden = !e.target.checked;
+    if (e.target.checked) for (const c of e.target.dataset.uses.split(',').filter(Boolean)) { const t = document.querySelector(`#pv input.tool[value="${CSS.escape(c)}"]`); if (t) t.checked = true; }
+    return;
+  }
   if (!e.target.matches('select[data-act=role]')) return;
   await api(`/users/${enc(e.target.dataset.email)}`, { method: 'PUT', body: JSON.stringify({ role: e.target.value }) }).catch(() => {});
   await openUsers();

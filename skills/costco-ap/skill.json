@@ -1,0 +1,6 @@
+{
+ "connections": ["costco"],
+ "settings": [
+  { "key": "portal", "label": "Vendor Accounting Portal", "hint": "Its address, opened after signing in to the Vendor Hub" }
+ ]
+}
