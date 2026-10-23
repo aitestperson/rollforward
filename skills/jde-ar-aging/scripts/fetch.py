@@ -64,7 +64,7 @@ def main():
     day, frm = (a.date, '--date') if a.date else (os.environ['RF_TODAY'], 'RF_TODAY') if os.environ.get('RF_TODAY') else (date.today().isoformat(), 'today')
     link = rf('settings', query={'skill': 'jde-ar-aging'}).get(f'folder_{a.company}')
     if not link:
-        sys.exit(f'this series has no company {a.company} folder link set for jde-ar-aging (series settings, Skill use)')
+        sys.exit(f'jde-ar-aging has no company {a.company} folder link set (an admin sets it under Skills)')
 
     folder = rf('files', {'args': ['list', link]})
     year = day[:4]

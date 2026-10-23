@@ -1,5 +1,5 @@
 {
- "connections": ["m365-files"],
+ "uses": ["m365-files"],
  "settings": [
   { "key": "file", "label": "Paid History workbook link", "hint": "A OneDrive or SharePoint link to the workbook" },
   { "key": "sheets", "label": "Sheets", "hint": "Comma-separated, such as 236, 450" },

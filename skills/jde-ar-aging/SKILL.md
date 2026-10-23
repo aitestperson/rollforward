@@ -5,7 +5,7 @@ description: Fetch a JDE A/R aging report (company 450, LFM, or 236, MHI) for a 
 
 # JDE A/R aging from OneDrive
 
-JDE drops each company's AR aging report, a csv, into a OneDrive folder every day. This skill picks the one for the day and saves it in `working/`. It reads through the **M365 OneDrive** connection; the folder links are this series' settings (`rf settings jde-ar-aging`).
+JDE drops each company's AR aging report, a csv, into a OneDrive folder every day. This skill picks the one for the day and saves it in `working/`. It reads through the **M365 OneDrive** connection; the folder links are the skill's settings, set by admins under Skills (`rf settings jde-ar-aging`).
 
 ```bash
 python "$RF_SKILLS/jde-ar-aging/scripts/fetch.py" --company 450 [--date YYYY-MM-DD]

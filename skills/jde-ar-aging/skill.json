@@ -1,5 +1,5 @@
 {
- "connections": ["m365-files"],
+ "uses": ["m365-files"],
  "settings": [
   { "key": "folder_450", "label": "Company 450 folder link", "hint": "A OneDrive or SharePoint link to the folder of company 450's AR aging reports; a year folder (…/2026) is followed to the year asked" },
   { "key": "folder_236", "label": "Company 236 folder link", "hint": "The same for company 236" }

@@ -1,6 +1,6 @@
 {
- "connections": ["target"],
+ "uses": ["m365-files"],
  "settings": [
-  { "key": "report", "label": "Report page", "hint": "The address of the Specific Document Search card under Apps & Reports, Account Payable: Domestic" }
+  { "key": "folder", "label": "Target Input folder link", "hint": "A OneDrive or SharePoint link to the folder where each day's Specific Document Search export is put, named MMDD… (such as 1023Input-Specific Document Search.csv)" }
  ]
 }

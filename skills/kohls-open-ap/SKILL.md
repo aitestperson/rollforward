@@ -5,7 +5,7 @@ description: Fetch Kohl's open AP report - the Excel attachment of the day's mai
 
 # Kohl's open AP from the mailbox
 
-Kohl's open-to-pay report arrives each day as an Excel attachment to a mail with a fixed subject. This skill finds the day's latest such mail in the **M365 Mail** connection's mailbox and saves its spreadsheet attachments. The subject words are this series' setting (`rf settings kohls-open-ap`).
+Kohl's open-to-pay report arrives each day as an Excel attachment to a mail with a fixed subject. This skill finds the day's latest such mail in the **M365 Mail** connection's mailbox and saves its spreadsheet attachments. The subject words are the skill's setting, set by admins under Skills (`rf settings kohls-open-ap`).
 
 ```bash
 python "$RF_SKILLS/kohls-open-ap/scripts/fetch.py" [--date YYYY-MM-DD]

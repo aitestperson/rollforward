@@ -12,7 +12,7 @@ import type { Instance } from '../src/store.ts';
 import { saveSystem, system } from '../src/systems.ts';
 import { endpoints, waitForCode } from '../src/graph.ts';
 import { agentCall, serveAgent, type AgentRun } from '../src/agent-api.ts';
-import { checkChosen, skills } from '../src/skills.ts';
+import { checkChosen, publicSettings, saveSkillConfig, skill, skills } from '../src/skills.ts';
 
 // A stand-in for Microsoft's sign-in and Graph: a company's year folders of AR aging reports, and a mailbox. The connections' reads
 // are called as a run's agent calls them, and the skills' scripts run against them as they would in a run.
@@ -25,13 +25,14 @@ let graph: Server;
 
 const item = (id: string, name: string, modified: string, folder = false) =>
   ({ id, name, lastModifiedDateTime: modified, parentReference: { driveId: 'b!d1', id: 'top' }, ...(folder ? { folder: {} } : { file: {} }) });
-const shares: Record<string, ReturnType<typeof item>> = { 'https://share.test/450': item('y2026', '2026', '2026-01-02T00:00:00Z', true) };
+const shares: Record<string, ReturnType<typeof item>> = { 'https://share.test/450': item('y2026', '2026', '2026-01-02T00:00:00Z', true), 'https://share.test/target': item('tgt', '2026 Target Input', '2026-01-02T00:00:00Z', true) };
 const folders: Record<string, ReturnType<typeof item>[]> = {
   top: [item('y2026', '2026', '2026-01-02T00:00:00Z', true), item('y2025', '2025', '2025-01-02T00:00:00Z', true)],
   y2026: [item('a', 'AGING_A_1.csv', '2026-10-20T12:00:00Z'), item('b', 'AGING_B_2.csv', '2026-10-20T12:30:00Z'), item('c', 'AGING_A_0.csv', '2026-10-19T12:00:00Z')],
   y2025: [item('d', 'AR aging for Co450_2025.12.31.csv', '2026-01-01T12:00:00Z')],
+  tgt: [item('t1', '1020Input-Specific Document Search (3).csv', '2026-10-23T04:15:56Z'), item('t2', '1005Input-Specific Document Search.csv', '2026-10-23T04:15:50Z')],
 };
-const content: Record<string, string> = { a: 'As-Of Date,10/20/2026\nCustomer,Open\nAcme,10\n', b: 'As-Of Date,10/13/2026\nother report\n', c: 'As-Of Date,10/19/2026\n', d: 'year end\n' };
+const content: Record<string, string> = { t1: 'Document,Amount\nD-1,10\n', t2: 'old\n', a: 'As-Of Date,10/20/2026\nCustomer,Open\nAcme,10\n', b: 'As-Of Date,10/13/2026\nother report\n', c: 'As-Of Date,10/19/2026\n', d: 'year end\n' };
 const mail = [
   { id: 'm1', subject: 'FW: Request successfully processed for DEMO SUPPLIER LLC', receivedDateTime: '2026-10-20T11:00:00Z', hasAttachments: true, from: { emailAddress: { address: 'may@demo.test' } } },
   { id: 'm2', subject: 'Something else', receivedDateTime: '2026-10-20T12:00:00Z', hasAttachments: true, from: { emailAddress: { address: 'x@demo.test' } } },
@@ -78,7 +79,10 @@ before(async () => {
   const appIds = { tenant: '00000000-0000-0000-0000-000000000001', client_id: '00000000-0000-0000-0000-000000000002', password: SECRET };
   saveSystem('m365-files', appIds, 'admin');
   saveSystem('m365-mail', { ...appIds, settings: { mailbox: MAILBOX } }, 'admin');
-  settings({ tools: ['m365-files', 'm365-mail'], skills: { 'jde-ar-aging': { folder_450: 'https://share.test/450', folder_236: 'https://share.test/236' }, 'kohls-open-ap': { subject: 'Request successfully processed' } } });
+  saveSkillConfig('jde-ar-aging', { folder_450: 'https://share.test/450', folder_236: 'https://share.test/236' }, 'admin');
+  saveSkillConfig('kohls-open-ap', { subject: 'Request successfully processed' }, 'admin');
+  saveSkillConfig('target-document-search', { folder: 'https://share.test/target' }, 'admin');
+  settings({ skills: ['jde-ar-aging', 'kohls-open-ap'] });
 });
 
 after(() => {
@@ -108,22 +112,28 @@ test('rf mail reads only the connection\'s mailbox: the day\'s mail by subject, 
   assert.deepEqual([saved.saved, again.saved], [['working/Open to Pay.xlsx'], ['working/Open to Pay (2).xlsx']]);
 });
 
-test('a connection outside the series\' Tool use, or not set up, is refused', async () => {
-  settings({ tools: ['m365-mail'], skills: {} });
-  await assert.rejects(call('/agent/files', { args: ['list', 'https://share.test/450'] }), /M365 OneDrive is not in this series' Tool use/);
+test('a connection no chosen skill uses, a skill not chosen, or one not set up, is refused', async () => {
+  settings({ skills: ['kohls-open-ap'] });
+  await assert.rejects(call('/agent/files', { args: ['list', 'https://share.test/450'] }), /no skill in this series' Skill use uses M365 OneDrive/);
   await assert.rejects(call('/agent/settings', undefined, 'skill=jde-ar-aging'), /not in this series' Skill use/);
-  settings({ tools: ['m365-files', 'burlington'], skills: {} });
-  await assert.rejects(call('/agent/browse', { system: 'burlington', action: 'look', args: [] }), /Burlington is chosen for this series but not set up yet/);
-  await assert.rejects(call('/agent/browse', { system: 'm365-files', action: 'look', args: [] }), /not a website: rf files reads it/);
+  settings({ skills: ['burlington-invoice'] });
+  await assert.rejects(call('/agent/flow', { args: ['burlington-invoice/invoice', '--var', 'invoices=1'] }), /Burlington.* is not set up yet: it needs address, account, password/i);
+  await assert.rejects(call('/agent/flow', { args: ['costco-ap/payments'] }), /costco-ap is not in this series' Skill use/);
 });
 
-test('a series saves only skills that exist, with the settings they declare', () => {
-  assert.deepEqual(checkChosen({ 'kohls-open-ap': { subject: ' Request ' } }), { 'kohls-open-ap': { subject: 'Request' } });
-  assert.throws(() => checkChosen({ nope: {} }), /no skill nope/);
-  assert.throws(() => checkChosen({ 'kohls-open-ap': { mailbox: 'x' } }), /kohls-open-ap has no setting mailbox/);
+test('admins set each skill up once; a password is sealed, never handed out, and kept when left empty; a series picks skills that exist', () => {
+  assert.deepEqual(checkChosen(['kohls-open-ap', 'kohls-open-ap']), ['kohls-open-ap']);
+  assert.throws(() => checkChosen(['nope']), /no skill nope/);
+  assert.throws(() => saveSkillConfig('kohls-open-ap', { mailbox: 'x' }, 'admin'), /kohls-open-ap has no setting mailbox/);
+  saveSkillConfig('burlington-invoice', { url: 'https://burl.test/#/login', username: 'svc', password: 'P4ss!word' }, 'admin');
+  assert.ok(!readFileSync(join(tmp, '.rf', 'skills.json'), 'utf8').includes('P4ss!word'));
+  assert.deepEqual(publicSettings(skill('burlington-invoice')!), { url: 'https://burl.test/#/login', username: 'svc' });
+  saveSkillConfig('burlington-invoice', { url: 'https://burl.test/#/login', username: 'svc2' }, 'admin');
+  assert.ok(JSON.parse(readFileSync(join(tmp, '.rf', 'skills.json'), 'utf8'))['burlington-invoice'].password, 'an empty password keeps the one saved');
   const ids = skills().map(s => s.id);
   for (const id of ['jde-ar-aging', 'walmart-paid-history', 'kohls-open-ap', 'target-document-search', 'costco-ap', 'burlington-invoice', 'e1-automation']) assert.ok(ids.includes(id), id);
   assert.deepEqual(skills().find(s => s.id === 'costco-ap')!.flows, ['payments', 'unpaid-items']);
+  assert.deepEqual([skill('costco-ap')!.signin, skill('burlington-invoice')!.signin, skill('target-document-search')!.site], [true, true, undefined]);
 });
 
 // The skills' scripts, run as in a run: rf reaching the agent API, files landing in working/.
@@ -137,7 +147,7 @@ async function script(skill: string, args: string[], env: Record<string, string>
 }
 
 test('jde-ar-aging: the file changed that day whose own As-Of Date is that day; another year follows the year folder', async () => {
-  settings({ tools: ['m365-files'], skills: { 'jde-ar-aging': { folder_450: 'https://share.test/450', folder_236: 'https://share.test/236' } } });
+  settings({ skills: ['jde-ar-aging'] });
   const r = await script('jde-ar-aging', ['--company', '450', '--date', '2026-10-20']);
   assert.match(r.stdout, /Saved working\/JDE AR aging 450 2026-10-20 - AGING_A_1\.csv: .*its As-Of Date is 2026-10-20, the latest of 2 candidates/);
   assert.equal(readFileSync(join(instDir, 'working', 'JDE AR aging 450 2026-10-20 - AGING_A_1.csv'), 'utf8'), content.a);
@@ -148,14 +158,22 @@ test('jde-ar-aging: the file changed that day whose own As-Of Date is that day; 
 });
 
 test("kohls-open-ap: the day's mail with the subject, its spreadsheets only, named for the day", async () => {
-  settings({ tools: ['m365-mail'], skills: { 'kohls-open-ap': { subject: 'Request successfully processed' } } });
+  settings({ skills: ['kohls-open-ap'] });
   const r = await script('kohls-open-ap', ['--date', '2026-10-20']);
   assert.match(r.stdout, /Saved working\/Kohls open AP 2026-10-20 - Open to Pay\.xlsx from the mail .* received 2026-10-20T11:00:00Z in ap@demo\.test/);
   await assert.rejects(script('kohls-open-ap', ['--date', '2026-10-21']), /no mail with an attachment.*on 2026-10-21/);
 });
 
+test("target-document-search: the day's file, by the MMDD its name starts with", async () => {
+  settings({ skills: ['target-document-search'] });
+  const r = await script('target-document-search', ['--date', '2026-10-20']);
+  assert.match(r.stdout, /Saved working\/Target specific document search 2026-10-20 - 1020Input-Specific Document Search \(3\)\.csv/);
+  assert.equal(readFileSync(join(instDir, 'working', 'Target specific document search 2026-10-20 - 1020Input-Specific Document Search (3).csv'), 'utf8'), content.t1);
+  await assert.rejects(script('target-document-search', ['--date', '2026-10-23']), /no Target input file for 2026-10-23 \(--date\).*no name starts with 1023\. Latest there: 1020Input/, 'not another day\'s file, though all were changed that day');
+});
+
 test('a wrong client secret shows what Microsoft said', async () => {
-  settings({ tools: ['m365-files'], skills: {} });
+  settings({ skills: ['jde-ar-aging'] });
   saveSystem('m365-files', { tenant: '00000000-0000-0000-0000-000000000001', client_id: '00000000-0000-0000-0000-000000000002', password: 'wrong' }, 'admin');
   await assert.rejects(call('/agent/files', { args: ['list', 'https://share.test/450'] }), /did not give the app a token: AADSTS7000215/);
 });

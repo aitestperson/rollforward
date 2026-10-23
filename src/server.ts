@@ -10,12 +10,12 @@ import { createInstance, duplicateInstance, forget, renameInstance, replaceReadO
 import { startRun, type Run } from './runner.ts';
 import { authenticate, checkConfig, mode, removeUser, signOutEverywhere, upsertUser, users, type Me, type Role } from './auth.ts';
 import { initSystem, setOwner, workspace, workspaces } from './system.ts';
-import { builtIn, catalog as systemCatalog, choice, choices, kindOf, missing, removeSystem, savedSystem, saveSystem, view as systemView } from './systems.ts';
-import { decide, pendingRequests, rejectPending, testLogin, type Browsing } from './browser.ts';
-import { agentCall, connectionsText } from './agent-api.ts';
+import { builtIn, catalog as systemCatalog, missing, removeSystem, savedSystem, saveSystem, view as systemView } from './systems.ts';
+import type { Browsing } from './browser.ts';
+import { agentCall, skillsText, testSkill } from './agent-api.ts';
 import { testM365 } from './m365.ts';
 import { seriesSettings } from './series.ts';
-import { checkChosen, skills } from './skills.ts';
+import { checkChosen, saveSkillConfig, skill, skills, skillView } from './skills.ts';
 
 const root = resolve(process.argv[2]);
 const app = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -41,18 +41,17 @@ function seenBefore(inst: Instance): number {
 }
 
 function pending(inst: Instance, seen: number): Entry[] {
-  return inst.log.filter(e => e.seq > seen && isPerson(e) && (['upload', 'answer', 'steer', 'approve', 'reject'].includes(e.op) || (e.op === 'create' && e.fetch)));
+  return inst.log.filter(e => e.seq > seen && isPerson(e) && (['upload', 'answer', 'steer'].includes(e.op) || (e.op === 'create' && e.fetch)));
 }
 
 function message(inst: Instance, n: number, entries: Entry[]): string {
   const reads = readable(inst.series()).map(s => `../${s}/`).join(', ');
-  const set = seriesSettings(inst.series()), uses = set.tools.length || Object.keys(set.skills).length ? connectionsText(inst.series()).split('\n').join('; ') : '';
-  return `Instance ${basename(inst.dir)} (folder ${basename(inst.dir)}/), run ${n}.${reads ? ` Series you can read: ${reads}.` : ''}${uses ? ` Connections and skills you can use: ${uses}.` : ''} New log entries:\n`
+  const uses = seriesSettings(inst.series()).skills.length ? skillsText(inst.series()).split('\n').join('; ') : '';
+  return `Instance ${basename(inst.dir)} (folder ${basename(inst.dir)}/), run ${n}.${reads ? ` Series you can read: ${reads}.` : ''}${uses ? ` Skills you can use: ${uses}.` : ''} New log entries:\n`
     + entries.map(e => JSON.stringify(e)).join('\n');
 }
 
 const visibleTo = (seriesDir: string) => seriesSettings(seriesDir).visible_to;
-const tools = (seriesDir: string) => seriesSettings(seriesDir).tools;
 
 function readable(seriesDir: string): string[] {
   const name = basename(seriesDir), workspaceDir = dirname(seriesDir);
@@ -88,7 +87,7 @@ async function start(inst: Instance) {
   inst.append('server', 'run', { run: n, upto: a.sent });
   try {
     a.run = await startRun({
-      seriesDir: series, instanceDir: inst.dir, message: text, skills: Object.keys(seriesSettings(series).skills).filter(id => skills().some(s => s.id === id)),
+      seriesDir: series, instanceDir: inst.dir, message: text, skills: seriesSettings(series).skills.filter(id => skill(id)),
       env: { RF_URL: `http://127.0.0.1:${port}`, RF_TOKEN: a.token, RF_WORKING: join(inst.dir, 'working') },
       onEvent: e => {
         if (e.type === 'message_end' && e.message.role === 'assistant') a.cost += e.message.usage.cost.total;
@@ -144,7 +143,7 @@ async function agent(req: IncomingMessage, res: ServerResponse, url: URL) {
   if (url.pathname === '/agent/workspace' && req.method === 'GET') return send(res, 200, a.inst.doc);
   if (url.pathname === '/agent/workspace' && req.method === 'PUT') return send(res, 200, `saved, rev ${a.inst.put((await body(req)).toString())}`);
   if (url.pathname === '/agent/reply' && req.method === 'POST') return send(res, 200, `replied, seq ${a.inst.append('agent', 'reply', { text: (await body(req)).toString() }).seq}`);
-  // Connections and skills: rf files, rf mail, rf settings, rf browse (see agent-api.ts).
+  // Skills: rf skills, rf settings, rf files, rf mail, rf flow (see agent-api.ts).
   const r = await agentCall(a, url.pathname, req.method ?? 'GET', url.searchParams, () => body(req));
   if (r) return send(res, r.status, r.data);
   throw new HttpError(404, 'not found');
@@ -179,7 +178,7 @@ function tree(me: Me) {
     series: dirs(join(root, workspace)).map(series => ({
       series, archived: existsSync(join(root, workspace, series, '.archived')), ...seriesSettings(join(root, workspace, series)), reads: readable(join(root, workspace, series)),
       instances: instances(join(root, workspace, series)).map(i => ({
-        label: basename(i.dir), status: i.doc.status, rev: i.doc.rev, running: active.get(i.series())?.inst === i, queued: queued(i), questions: questions(i), requests: pendingRequests(i).length,
+        label: basename(i.dir), status: i.doc.status, rev: i.doc.rev, running: active.get(i.series())?.inst === i, queued: queued(i), questions: questions(i),
       })),
     })),
   }));
@@ -269,12 +268,9 @@ async function people(me: Me, req: IncomingMessage, res: ServerResponse, url: UR
       return send(res, 200, 'ok');
     }
     if (req.method === 'PUT') {
-      const { name, visible_to, tools: uses, skills: chosen, archived } = JSON.parse((await body(req)).toString());
+      const { name, visible_to, skills: chosen, archived } = JSON.parse((await body(req)).toString());
       if (!Array.isArray(visible_to) || !visible_to.every(n => typeof n === 'string')) throw new HttpError(400, 'visible_to must be a list of series names');
-      if (uses !== undefined && (!Array.isArray(uses) || !uses.every(t => typeof t === 'string' && choice(t)))) throw new HttpError(400, `tools must be connections from the list: ${choices().map(s => s.id).join(', ')}`);
-      const to = safeName(name), updates = new Map([[seriesDir, {
-        ...seriesSettings(seriesDir), visible_to, ...(uses && { tools: uses.map((t: string) => choice(t)!.id) }), ...(chosen !== undefined && { skills: checkChosen(chosen) }),
-      }]]);
+      const to = safeName(name), updates = new Map([[seriesDir, { ...seriesSettings(seriesDir), visible_to, ...(chosen !== undefined && { skills: checkChosen(chosen) }) }]]);
       if (to !== series) {
         if (existsSync(join(workspaceDir, to))) throw new HttpError(409, `${to} exists`);
         if (active.has(seriesDir) || instances(seriesDir).some(i => debounce.has(i.dir))) throw new HttpError(409, 'wait for the run to end');
@@ -328,8 +324,6 @@ async function people(me: Me, req: IncomingMessage, res: ServerResponse, url: UR
   } else if (action === 'answer') {
     const { note, choice } = JSON.parse((await body(req)).toString());
     inst.answer(by, note, choice);
-  } else if (action === 'approve' || action === 'reject') {
-    await decide(inst, String(JSON.parse((await body(req)).toString()).request), by, action === 'approve', tools(seriesDir));
   } else if (action === 'steer') {
     inst.append(by, 'steer', { text: JSON.parse((await body(req)).toString()).text });
   } else if (action === 'interrupt') {
@@ -345,7 +339,6 @@ async function people(me: Me, req: IncomingMessage, res: ServerResponse, url: UR
     return send(res, 200, 'ok');
   } else if (action === 'close' || action === 'abandon') {
     if (mine) throw new HttpError(409, 'wait for the run to end');
-    rejectPending(inst, `the instance was ${action === 'close' ? 'closed' : 'abandoned'}`);
     inst[action](by);
     return send(res, 200, 'ok');
   } else throw new HttpError(404, `no action ${action}`);
@@ -379,22 +372,42 @@ async function admin(me: Me, req: IncomingMessage, res: ServerResponse, url: URL
   send(res, 200, 'ok');
 }
 
-// The connections catalog: anyone signed in may list the names, to choose a series' Tool use; only admins see the rest and change it.
+// Skills: anyone signed in may list them with whether each is set up, to choose a series' Skill use; only admins see their
+// settings (never a secret, only whether one is saved), change them and test them.
+async function skillsRoute(me: Me, req: IncomingMessage, res: ServerResponse, url: URL) {
+  const [id = '', action] = url.pathname.split('/').slice(2).map(decodeURIComponent);
+  if (!id && req.method === 'GET') return send(res, 200, skills().map(s => skillView(s, me.role === 'admin')));
+  if (me.role !== 'admin') throw new HttpError(403, 'admins only');
+  const s = skill(id);
+  if (!s) throw new HttpError(404, `no skill ${id}`);
+  if (req.method === 'PUT') {
+    saveSkillConfig(id, JSON.parse((await body(req)).toString()), me.email);
+    return send(res, 200, skillView(s, true));
+  }
+  if (action === 'test' && req.method === 'POST') {
+    try {
+      return send(res, 200, await testSkill(id));
+    } catch (e) {
+      throw new HttpError((e as HttpError).status === 409 ? 409 : 502, (e as Error).message.split('\n').slice(0, 5).join('\n'));
+    }
+  }
+  throw new HttpError(405, 'PUT, or POST test');
+}
+
+// The shared connections: admins only, as series don't choose them.
 async function catalog(me: Me, req: IncomingMessage, res: ServerResponse, url: URL) {
   const [id = '', action] = url.pathname.split('/').slice(2).map(decodeURIComponent);
-  if (url.pathname === '/skills' && req.method === 'GET') return send(res, 200, skills().map(({ dir, ...s }) => s));
-  if (!id && req.method === 'GET') return send(res, 200, me.role === 'admin' ? systemCatalog() : choices());
   if (me.role !== 'admin') throw new HttpError(403, 'admins only');
-  if (!id && req.method === 'POST') return send(res, 200, systemView(saveSystem(undefined, JSON.parse((await body(req)).toString()), me.email)));
+  if (!id && req.method === 'GET') return send(res, 200, systemCatalog());
   const s = savedSystem(id);
-  if (!s && !builtIn(id)) throw new HttpError(404, `no system ${id}`);
-  // A built-in system is saved under its own id, set up or not; it may be saved in part, such as its links before its secret.
-  if (req.method === 'PUT') return send(res, 200, systemView(saveSystem(s?.id ?? id, JSON.parse((await body(req)).toString()), me.email)));
+  if (!builtIn(id)) throw new HttpError(404, `no connection ${id}`);
+  // A connection may be saved in part, such as its ids before its secret.
+  if (req.method === 'PUT') return send(res, 200, systemView(saveSystem(id, JSON.parse((await body(req)).toString()), me.email)));
   if (action === 'test' && req.method === 'POST') {
     const need = missing(s, id);
-    if (need.length) throw new HttpError(409, `${s?.name ?? builtIn(id)!.name} still needs ${need.join(', ')}`);
+    if (need.length) throw new HttpError(409, `${builtIn(id)!.name} still needs ${need.join(', ')}`);
     try {
-      return send(res, 200, await (kindOf(s!) === 'm365' ? testM365 : testLogin)(s!));
+      return send(res, 200, await testM365(s!));
     } catch (e) {
       throw new HttpError(502, (e as Error).message.split('\n').slice(0, 5).join('\n'));
     }
@@ -421,7 +434,8 @@ createServer({ requestTimeout: 60 * 60_000 }, async (req, res) => {
     else if (url.pathname.startsWith('/preview/')) await file(me, res, url, true);
     else if (url.pathname.startsWith('/api/')) await people(me, req, res, url);
     else if (url.pathname === '/users' || url.pathname.startsWith('/users/')) await admin(me, req, res, url);
-    else if (url.pathname === '/systems' || url.pathname.startsWith('/systems/') || url.pathname === '/skills') await catalog(me, req, res, url);
+    else if (url.pathname === '/systems' || url.pathname.startsWith('/systems/')) await catalog(me, req, res, url);
+    else if (url.pathname === '/skills' || url.pathname.startsWith('/skills/')) await skillsRoute(me, req, res, url);
     else throw new HttpError(404, 'not found');
   } catch (err) {
     send(res, err instanceof HttpError ? err.status : 500, (err as Error).message);

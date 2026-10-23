@@ -5,10 +5,10 @@ description: Look up Burlington invoices by number on its Traverse vendor portal
 
 # Burlington Invoice Inquiry
 
-Uses the **Burlington** connection: the server signs in to Burlington's Traverse portal with its account and runs this skill's flow in that browser.
+The server signs in to Burlington's Traverse portal with the account in this skill's settings (set by admins under Skills; you never see the password), and runs this skill's flow in that browser.
 
 ```bash
-rf browse burlington run burlington-invoice/invoice --var invoices=12345678,12345679
+rf flow burlington-invoice/invoice --var invoices=12345678,12345679
 ```
 
 - `invoices` is one invoice number, or several separated by commas, all in one search.

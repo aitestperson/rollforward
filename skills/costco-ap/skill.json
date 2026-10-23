@@ -1,6 +1,11 @@
 {
- "connections": ["costco"],
+ "uses": ["m365-mail"],
+ "site": { "hosts": ["https://hub.costco.com", "https://login.costco.com", "https://authenticator.pingone.com", "https://apps.pingone.com", "https://vendorauth.costco.com", "https://apvendor.costco.com", "https://mobilecontent.costco.com"] },
  "settings": [
-  { "key": "portal", "label": "Vendor Accounting Portal", "hint": "Its address, opened after signing in to the Vendor Hub" }
+  { "key": "url", "label": "Address", "hint": "Where the sign-in starts: the Vendor Hub's address" },
+  { "key": "username", "label": "Account", "hint": "The email the server signs in with" },
+  { "key": "password", "label": "Password", "secret": true },
+  { "key": "otp_mail", "label": "Sign-in codes arrive in", "hint": "The connection whose mailbox gets the codes Costco mails; M365 Mail if empty", "optional": true },
+  { "key": "portal", "label": "Vendor Accounting Portal", "hint": "Its address, opened after signing in to the hub" }
  ]
 }

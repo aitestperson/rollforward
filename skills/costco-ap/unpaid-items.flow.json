@@ -1,5 +1,4 @@
 {
- "connection": "costco",
  "reads_that_post": ["POST */as/token.oauth2", "POST */saml/*", "POST */saml2/*", "POST */idp/*", "POST */sso*", "POST */vp/index.html*"],
  "steps": [
   { "goto": "{portal}" },

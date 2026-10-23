@@ -33,7 +33,7 @@ def main():
     day, frm = (a.date, '--date') if a.date else (os.environ['RF_TODAY'], 'RF_TODAY') if os.environ.get('RF_TODAY') else (date.today().isoformat(), 'today')
     subject = rf('settings', query={'skill': 'kohls-open-ap'}).get('subject')
     if not subject:
-        sys.exit('this series has no subject set for kohls-open-ap (series settings, Skill use)')
+        sys.exit('kohls-open-ap has no subject set (an admin sets it under Skills)')
     found = rf('mail', {'args': ['find', '--date', day, '--subject', subject, '--attachments']})
     if not found['messages']:
         sys.exit(f"no mail with an attachment and a subject containing \"{subject}\" in {found['mailbox']} on {day} ({frm})")

@@ -63,12 +63,6 @@ button.twisty:hover { background: var(--rule); color: var(--ink); }
 .acct { padding: 14px 8px 0; font-size: 12.5px; color: var(--ink-2); border-top: 1px solid var(--rule); margin-top: 10px; }
 .acct .mail { color: var(--ink-3); font-size: 12px; word-break: break-all; }
 .acct .quiet { display: inline-block; padding: 4px 10px 0 0; }
-.reqs { display: grid; gap: 8px; margin-bottom: 18px; max-width: 760px; }
-.rq { background: var(--sheet); border: 1px solid var(--rule-2); border-left: 3px solid var(--note); border-radius: var(--r1); padding: 10px 12px; font-size: 13px; }
-.rq .sub { color: var(--ink-3); font-size: 12.5px; margin-top: 4px; }
-.rq ol { margin: 6px 0; padding-left: 20px; font: 12px/1.5 var(--mono); color: var(--ink-2); }
-.rq img { display: block; max-width: 100%; max-height: 220px; margin-top: 6px; border: 1px solid var(--rule); cursor: zoom-in; }
-.rq .acts { border: 0; padding-top: 6px; margin-top: 2px; }
 @media (max-width: 560px) { .ut th:nth-child(3), .ut td:nth-child(3), .ut th:nth-child(4), .ut td:nth-child(4) { display: none; } }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--note); display: inline-block; margin-left: 6px; vertical-align: 1px; }
 .dot.k { background: var(--ink); }
@@ -373,7 +367,7 @@ async function refresh() {
 }
 
 function render() {
-  const qs = tree.filter(w => !w.archived).flatMap(w => w.series.filter(s => !s.archived).flatMap(s => s.instances)).reduce((t, i) => t + i.questions + i.requests, 0);
+  const qs = tree.filter(w => !w.archived).flatMap(w => w.series.filter(s => !s.archived).flatMap(s => s.instances)).reduce((t, i) => t + i.questions, 0);
   document.title = `${qs ? `(${qs}) ` : ''}${cur?.label ? cur.label + ' \u00b7 ' : ''}rollforward`;
   renderSide();
   renderBar();
@@ -385,7 +379,7 @@ function render() {
 
 function renderSide() {
   const listed = (x, on) => !x.archived || showArchived || on;
-  const asks = s => !s.archived && s.instances.some(i => i.questions || i.requests);
+  const asks = s => !s.archived && s.instances.some(i => i.questions);
   const btn = (act, title, glyph) => `<button class="add" data-act="${act}" title="${title}">${glyph}</button>`;
   let h = `<div class="row head"><span class="nm">Workspaces</span>${btn('new-workspace', 'New workspace', '+')}</div>`;
   for (const w of tree) {
@@ -404,7 +398,7 @@ function renderSide() {
       const closed = s.instances.length - open.length;
       h += '<div class="tree">';
       for (const i of s.instances.filter(i => i.status === 'open' || showClosed || i.label === cur.label)) {
-        const st = i.running ? '<span class="spin"></span> running' : i.queued ? '\u29D7 queued' : i.requests ? `<span class="q">${i.requests} to approve</span>` : i.questions ? `<span class="q">${i.questions} question${i.questions > 1 ? 's' : ''}</span>` : i.status === 'open' ? '' : i.status;
+        const st = i.running ? '<span class="spin"></span> running' : i.queued ? '\u29D7 queued' : i.questions ? `<span class="q">${i.questions} question${i.questions > 1 ? 's' : ''}</span>` : i.status === 'open' ? '' : i.status;
         const k = `rev:/api/${enc(w.workspace)}/${enc(s.series)}/${enc(i.label)}`;
         localStorage[k] ??= i.rev;
         h += `<a class="row inst ${i.status} ${cur.label === i.label ? 'on' : ''}" href="#/${enc(w.workspace)}/${enc(s.series)}/${enc(i.label)}"><span class="nm">${esc(i.label)}${i.rev > +localStorage[k] ? '<span class="dot k"></span>' : ''}</span><span class="n">${st}</span></a>`;
@@ -418,16 +412,11 @@ function renderSide() {
   if (archived) h += `<button class="quiet" data-act="toggle-archived">${showArchived ? 'Hide' : 'Show'} archived (${archived})</button>`;
   h += `<div class="legend"><div><i class="p">Blue</i> uploaded by a person</div><div><i>Black</i> made by the agent</div><div><span class="tri"></span>a note, for information</div><div><span class="tri q"></span>a question for you</div><div><span class="dash"></span>expected, not there yet</div></div>`;
   h += `<div class="acct"><div>${esc(me.name)}${me.role === 'admin' ? ' · admin' : ''}</div><div class="mail">${esc(me.email)}</div>`
-    + (me.role === 'admin' ? '<button class="quiet" data-act="users">Users</button><button class="quiet" data-act="systems">Systems</button>' : '') + '<button class="quiet" data-act="signout">Sign out</button></div>';
+    + (me.role === 'admin' ? '<button class="quiet" data-act="users">Users</button><button class="quiet" data-act="systems">Systems</button><button class="quiet" data-act="skills">Skills</button>' : '') + '<button class="quiet" data-act="signout">Sign out</button></div>';
   put($('#side'), h);
 }
 
 function lastDone() { return data.log.findLast(e => e.op === 'done'); }
-
-function pendingReqs() {
-  const decided = new Set(data.log.filter(e => e.op === 'approve' || e.op === 'reject').map(e => e.request));
-  return data.log.filter(e => e.op === 'request' && !decided.has(e.request));
-}
 
 const stepText = s => `${s.do}${s.target ? ` ${s.target}` : ''}${s.value !== undefined ? ` = "${s.value}"` : ''}`;
 
@@ -496,11 +485,7 @@ function renderPanes() {
   const shown = new Set(items.map(i => i.file)), also = new Map();
   for (const i of items) for (const n of i.notes ?? []) for (const f of n.files ?? []) if (!shown.has(f) && !also.has(f)) also.set(f, i);
   const alsoUsed = also.size ? `<div class="also"><div class="ah">Also used</div>${[...also].map(([f, i]) => `<div><a data-act="preview" data-file="${esc(f)}">${esc(fname(f))}</a> <span class="via">· noted on <a data-act="opencard" data-item="${esc(i.id)}">${esc(i.name)}</a></span></div>`).join('')}</div>` : '';
-  const reqs = pendingReqs().map(r => `<div class="rq"><div><b>The agent asks to write</b> in ${esc(r.name)}: ${esc(r.description)}</div>`
-    + `<div class="sub">Starting at ${esc(r.start)}, the server would:</div><ol>${r.steps.map(s => `<li>${esc(stepText(s))}</li>`).join('')}</ol>`
-    + (r.screenshot ? `<a data-act="preview" data-file="${esc(r.screenshot)}"><img src="${fileUrl(r.screenshot)}" alt="The page when the agent asked"></a>` : '')
-    + `<div class="acts"><button class="btn commit" data-act="approve" data-req="${esc(r.request)}">Approve and run</button><button class="btn danger" data-act="reject" data-req="${esc(r.request)}">Reject</button></div></div>`).join('');
-  put($('#flow'), (reqs ? `<div class="reqs">${reqs}</div>` : '') + `<div class="cols">${cols.map((col, k) => `<div class="col">${k === 0 ? head('Inputs', col, 'in') : k === 1 ? head('Steps', steps) : '<div class="ph"></div>'}${col.map(tile).join('')}${k === 0 ? adding('in') + alsoUsed : ''}</div>`).join('')}</div>`
+  put($('#flow'), `<div class="cols">${cols.map((col, k) => `<div class="col">${k === 0 ? head('Inputs', col, 'in') : k === 1 ? head('Steps', steps) : '<div class="ph"></div>'}${col.map(tile).join('')}${k === 0 ? adding('in') + alsoUsed : ''}</div>`).join('')}</div>`
     + (open ? '<div class="hint">Drop files to add them. The agent decides what each one is.</div>' : ''));
   put($('#outs'), `<div class="col">${head('Outputs', outs, 'out')}${outs.map(tile).join('')}${adding('out')}</div>${open ? '<div class="hint">Drop a revised output here.</div>' : ''}`);
   $('#outs').classList.toggle('busy', !!data.run);
@@ -747,23 +732,16 @@ function renderPv() {
   else if (pv.text !== undefined) h += `<div class="pvb">${pv.md ? `<div class="say">${md(pv.text)}</div>` : `<pre>${esc(pv.text)}</pre>`}</div>`;
   else if (pv.settings?.kind === 'users') h += `<div class="pvb vl">${usersHtml(pv.settings)}</div>`;
   else if (pv.settings?.kind === 'systems') h += `<div class="pvb vl">${systemsHtml(pv.settings)}</div>`;
+  else if (pv.settings?.kind === 'skills') h += `<div class="pvb vl">${skillsHtml(pv.settings)}</div>`;
   else if (pv.settings) {
     const s = pv.settings;
     h += '<div class="pvb vl">';
     if (s.kind === 'workspace' && me.role === 'admin') h += `<h3>Owner</h3><div class="sub">Only the owner and admins can see this workspace and its series.</div><div class="row2"><select id="wowner"><option value="">No owner (admins only)</option>${s.users.map(u => `<option value="${esc(u.email)}" ${u.email === s.owner ? 'selected' : ''}>${esc(u.name ?? u.email)} · ${esc(u.email)}</option>`).join('')}</select><button class="btn" data-act="saveowner">Save</button></div><hr>`;
     if (s.kind === 'series') h += `<h3>Name</h3><input type="text" id="sname" value="${esc(s.name)}">`
-      + `<h3>Tool use</h3><div class="sub">Connections the agent may use for this series: websites it uses in a browser the server runs, and Microsoft 365 mail and files it reads. The server signs in with each one's account, and each write waits for a person to approve it.</div>`
-      + s.catalog.map(t => `<label><input type="checkbox" class="tool" value="${esc(t.id)}" ${s.tools.includes(t.id) ? 'checked' : ''}> ${esc(t.name)}${t.configured ? '' : ' <span class="sub">· not set up yet</span>'}</label>`).join('')
-      + (s.catalog.some(t => !t.configured) ? `<div class="sub">A connection not set up yet can be chosen now; the agent can use it once ${me.role === 'admin' ? 'you set it up' : 'an admin sets it up'} under Systems.</div>` : '')
-      + `<h3>Skill use</h3><div class="sub">What the agent knows how to fetch or do, through the connections above. Choosing one ticks the connections it uses; its settings are this series' own.</div>`
-      + s.skillList.map(k => {
-        const on = !!s.skills[k.id], uses = k.connections.map(c => s.catalog.find(t => t.id === c)?.name ?? c);
-        return `<div class="skill-row"><label><input type="checkbox" class="skill" value="${esc(k.id)}" data-uses="${esc(k.connections.join(','))}" ${on ? 'checked' : ''}> ${esc(k.name)}</label>`
-          + `<div class="sub">${esc(k.description.length > 180 ? k.description.slice(0, 180) + '…' : k.description)}${uses.length ? ` Uses ${esc(uses.join(', '))}.` : ''}</div>`
-          + `<div class="sk-fields" ${on ? '' : 'hidden'} style="display:grid;gap:6px;margin:4px 0 8px 22px">`
-          + k.settings.map(f => `<label style="display:grid;gap:4px">${esc(f.label)}${f.optional ? ' <span class="sub">(optional)</span>' : ''}<input type="text" class="sk-set" data-skill="${esc(k.id)}" data-key="${esc(f.key)}" value="${esc(s.skills[k.id]?.[f.key] ?? '')}" autocomplete="off">${f.hint ? `<span class="sub">${esc(f.hint)}</span>` : ''}</label>`).join('')
-          + '</div></div>';
-      }).join('')
+      + `<h3>Skill use</h3><div class="sub">What the agent may fetch or do for this series. Admins set each skill up once, under Skills, for every series.</div>`
+      + s.skillList.map(k => `<label class="skill-row"><input type="checkbox" class="skill" value="${esc(k.id)}" ${s.skills.includes(k.id) ? 'checked' : ''}> ${esc(k.name)}${k.configured ? '' : ' <span class="sub">· not set up yet</span>'}</label>`
+        + `<div class="sub" style="margin:0 0 6px 22px">${esc(k.description.length > 180 ? k.description.slice(0, 180) + '…' : k.description)}</div>`).join('')
+      + (s.skillList.some(k => !k.configured) ? `<div class="sub">A skill not set up yet can be chosen now; the agent can use it once ${me.role === 'admin' ? 'you set it up' : 'an admin sets it up'} under Skills.</div>` : '')
       + `<h3>Visibility</h3><div class="sub">Other series that can see this one</div>` + visibilityHtml(s)
       + (s.reads.length ? `<div class="sub">This series can see ${esc(s.reads.join(', '))}.</div>` : '')
       + '<div><button class="btn primary" data-act="savesettings">Save</button></div><hr>';
@@ -815,38 +793,50 @@ async function openWorkspaceSettings() {
   renderPv();
 }
 
-const KINDS = { web: 'Website', m365: 'Microsoft 365 app' };
+const KINDS = { m365: 'Microsoft 365 app' };
 
 function systemsHtml(s) {
   if (!s.edit) {
-    return `<div class="sub">Company connections, with the accounts and secrets the server uses for them. Series choose them under Tool use, and skills fetch through them; a site that mails a sign-in code has it read from M365 Mail.</div>`
+    return `<div class="sub">The Microsoft 365 apps the server reads through, shared by the skills that use them; a site that mails a sign-in code has it read from M365 Mail. Series don't choose these: they choose skills.</div>`
       + `<table class="ut"><tr><th>System</th><th>Kind</th><th>State</th><th></th></tr>`
-      + s.list.map(x => `<tr><td><b>${esc(x.name)}</b>${x.kind === 'web' && x.url ? `<div class="sub">${esc(x.url)}</div>` : ''}</td><td class="sub">${KINDS[x.kind]}</td>`
+      + s.list.map(x => `<tr><td><b>${esc(x.name)}</b></td><td class="sub">${KINDS[x.kind]}</td>`
         + `<td>${x.configured ? 'Ready' : `<span class="sub">${x.saved ? `needs ${esc(x.missing.join(', '))}` : 'not set up yet'}</span>`}</td>`
         + `<td><button class="btn" data-act="editsys" data-id="${esc(x.id)}">${x.saved ? 'Edit' : 'Set up'}</button></td></tr>`).join('')
-      + `</table><div><button class="btn" data-act="newsys">+ Add website</button></div>`;
+      + '</table>';
   }
-  const e = s.edit, kind = e.kind ?? 'web';
+  const e = s.edit, kind = 'm365';
   const f = (id, label, v = '', ph = '', type = 'text') => `<label style="display:grid;gap:4px">${label}<input type="${type}" id="${id}" value="${esc(v)}" placeholder="${esc(ph)}" autocomplete="off"></label>`;
   const secret = (label) => f('ys-pass', label, '', e.has_password ? 'Saved. Leave empty to keep it.' : '', 'password');
   const fields = (e.fields ?? []).map(x => `<label style="display:grid;gap:4px">${esc(x.label)}<input type="text" class="ys-set" data-key="${esc(x.key)}" value="${esc(e.settings?.[x.key] ?? '')}" autocomplete="off">${x.hint ? `<span class="sub">${esc(x.hint)}</span>` : ''}</label>`).join('');
-  let h = `<h3>${e.saved ? `Edit ${esc(e.name)}` : e.id ? `Set up ${esc(e.name)}` : 'Add a website'}</h3><div class="sub">${KINDS[kind]}${e.missing?.length && e.id ? ` · needs ${esc(e.missing.join(', '))}` : ''}</div>`;
-  if (!e.built_in) h += f('ys-name', 'Name', e.name, 'E1');
-  if (kind === 'web') {
-    const advanced = !!(e.writes?.length || e.extra_origins?.length || e.login?.user || e.login?.pass || e.login?.submit);
-    h += f('ys-url', 'Address', e.url, 'https://e1.example.com') + f('ys-user', 'Account (user name or email)', e.username, 'name@example.com') + secret('Password') + fields
-      + `<details class="adv-set" ${advanced ? 'open' : ''}><summary>Advanced: write rules and page selectors (for technical setup, not the account)</summary>`
-      + `<h3>Writes</h3><div class="sub">Requests that count as writes, one a line, such as POST */save*. Empty: every request but GET. The agent's browser stops these until a person approves.</div><textarea id="ys-writes" rows="3">${esc((e.writes ?? []).join('\n'))}</textarea>`
-      + `<h3>Other addresses</h3><div class="sub">Hosts the sign-in passes through, such as a single sign-on page, one a line.</div><textarea id="ys-extra" rows="2">${esc((e.extra_origins ?? []).join('\n'))}</textarea>`
-      + `<h3>Sign-in page selectors</h3><div class="sub">CSS selectors of the sign-in page's boxes, only if the server can't find them itself. Never the account or password: those go above.</div>`
-      + f('ys-luser', 'Selector of the user box (CSS)', e.login?.user, 'input[name="username"]') + f('ys-lpass', 'Selector of the password box (CSS)', e.login?.pass, 'input[type="password"]') + f('ys-lsubmit', 'Selector of the sign-in button (CSS)', e.login?.submit, 'button[type="submit"]')
-      + '</details>';
-  } else if (kind === 'm365') {
-    h += f('ys-tenant', 'Directory (tenant) ID', e.tenant, '00000000-0000-0000-0000-000000000000') + f('ys-client', 'Application (client) ID', e.client_id, '00000000-0000-0000-0000-000000000000')
+  let h = `<h3>${e.saved ? `Edit ${esc(e.name)}` : `Set up ${esc(e.name)}`}</h3><div class="sub">${KINDS[kind]}${e.missing?.length && e.id ? ` · needs ${esc(e.missing.join(', '))}` : ''}</div>`;
+  h += f('ys-tenant', 'Directory (tenant) ID', e.tenant, '00000000-0000-0000-0000-000000000000') + f('ys-client', 'Application (client) ID', e.client_id, '00000000-0000-0000-0000-000000000000')
       + secret('Client secret') + fields + `<div class="sub">The app reads through Microsoft Graph with its own application permissions, granted by an admin.</div>`;
-  }
   return h + `<div class="row2"><button class="btn primary" data-act="savesys">Save</button>${e.configured ? '<button class="btn" data-act="testsys">Test</button>' : ''}`
-    + `${e.saved ? `<button class="btn danger" data-act="delsys">${e.built_in ? 'Clear' : 'Delete'}</button>` : ''}<button class="btn" data-act="systems" style="margin-left:auto">Back</button></div>`;
+    + `${e.saved ? `<button class="btn danger" data-act="delsys">Clear</button>` : ''}<button class="btn" data-act="systems" style="margin-left:auto">Back</button></div>`;
+}
+
+function skillsHtml(s) {
+  if (!s.edit) {
+    return `<div class="sub">What each skill fetches or does, set up once here for every series; a series chooses which skills it uses under Skill use. Passwords are saved sealed and never shown again.</div>`
+      + `<table class="ut"><tr><th>Skill</th><th>Uses</th><th>State</th><th></th></tr>`
+      + s.list.map(x => `<tr><td><b>${esc(x.name)}</b>${x.site ? '<div class="sub">website</div>' : ''}</td><td class="sub">${esc(x.uses.join(', ') || '—')}</td>`
+        + `<td>${x.configured ? 'Ready' : `<span class="sub">needs ${esc(x.missing.join(', '))}</span>`}</td>`
+        + `<td><button class="btn" data-act="editskill" data-id="${esc(x.id)}">${x.configured ? 'Edit' : 'Set up'}</button></td></tr>`).join('') + '</table>';
+  }
+  const e = s.edit;
+  const field = x => x.secret
+    ? `<label style="display:grid;gap:4px">${esc(x.label)}<input type="password" class="sk-set" data-key="${esc(x.key)}" placeholder="${e.secrets[x.key] ? 'Saved. Leave empty to keep it.' : ''}" autocomplete="new-password"></label>`
+    : `<label style="display:grid;gap:4px"><span>${esc(x.label)}${x.optional ? ' <span class="sub">(optional)</span>' : ''}</span><input type="text" class="sk-set" data-key="${esc(x.key)}" value="${esc(e.values[x.key] ?? '')}" autocomplete="off">${x.hint ? `<span class="sub">${esc(x.hint)}</span>` : ''}</label>`;
+  return `<h3>${esc(e.name)}</h3><div class="sub">${esc(e.description)}</div>`
+    + (e.uses.length ? `<div class="sub">Reads through ${esc(e.uses.join(', '))}, set up under Systems.</div>` : '')
+    + (e.missing.length ? `<div class="sub">Needs ${esc(e.missing.join(', '))}.</div>` : '')
+    + (e.settings.length ? e.settings.map(field).join('') : '<div class="sub">It has no settings.</div>')
+    + `<div class="row2">${e.settings.length ? '<button class="btn primary" data-act="saveskill">Save</button>' : ''}${e.configured ? '<button class="btn" data-act="testskill">Test</button>' : ''}<button class="btn" data-act="skills" style="margin-left:auto">Back</button></div>`;
+}
+
+async function openSkills() {
+  pv = { title: 'Skills', settings: { kind: 'skills', list: await api('/skills') } };
+  renderPv();
 }
 
 async function openSystems() {
@@ -920,8 +910,8 @@ document.addEventListener('click', async ev => {
   if (act === 'preview') await preview(el.dataset.file, data.doc.items.find(i => i.id === el.dataset.item));
   if (act === 'unpv') { pv = null; renderPv(); }
   if (act === 'settings') {
-    const w = tree.find(w => w.workspace === cur.workspace), s = w.series.find(s => s.series === cur.series), [catalog, skillList] = await Promise.all([api('/systems'), api('/skills')]);
-    pv = { title: 'Series settings', settings: { kind: 'series', name: s.series, others: w.series.map(x => x.series).filter(n => n !== s.series), chosen: s.visible_to, tools: s.tools, catalog, skills: s.skills ?? {}, skillList, reads: s.reads, archived: s.archived } };
+    const w = tree.find(w => w.workspace === cur.workspace), s = w.series.find(s => s.series === cur.series), skillList = await api('/skills');
+    pv = { title: 'Series settings', settings: { kind: 'series', name: s.series, others: w.series.map(x => x.series).filter(n => n !== s.series), chosen: s.visible_to, skills: s.skills ?? [], skillList, reads: s.reads, archived: s.archived } };
     renderPv();
   }
   if (act === 'vis-fold') {
@@ -932,14 +922,29 @@ document.addEventListener('click', async ev => {
     el.setAttribute('aria-expanded', open);
   }
   if (act === 'systems') await openSystems();
-  if (act === 'editsys' || act === 'newsys') { pv.settings.edit = act === 'newsys' ? { kind: 'web' } : pv.settings.list.find(s => s.id === el.dataset.id); renderPv(); }
+  if (act === 'skills') await openSkills();
+  if (act === 'editskill') { pv.settings.edit = pv.settings.list.find(s => s.id === el.dataset.id); renderPv(); }
+  if (act === 'saveskill') {
+    const e = pv.settings.edit, body = {};
+    for (const i of document.querySelectorAll('#pv .sk-set')) if (i.type !== 'password' || i.value) body[i.dataset.key] = i.type === 'password' ? i.value : i.value.trim();
+    const saved = await api(`/skills/${enc(e.id)}`, { method: 'PUT', body: JSON.stringify(body) });
+    toast(`Saved ${e.name}`, 'ok');
+    await openSkills();
+    pv.settings.edit = pv.settings.list.find(s => s.id === saved.id);
+    renderPv();
+  }
+  if (act === 'testskill') {
+    el.disabled = true;
+    const was = el.textContent;
+    el.textContent = 'Testing…';
+    try { toast(await api(`/skills/${enc(pv.settings.edit.id)}/test`, { method: 'POST' }), 'ok'); } finally { el.disabled = false; el.textContent = was; }
+  }
+  if (act === 'editsys') { pv.settings.edit = pv.settings.list.find(s => s.id === el.dataset.id); renderPv(); }
   if (act === 'savesys') {
     const e = pv.settings.edit, val = id => document.getElementById(id)?.value.trim() ?? '';
     const settings = Object.fromEntries([...document.querySelectorAll('#pv .ys-set')].map(i => [i.dataset.key, i.value.trim()]));
-    const body = { name: e.built_in ? e.name : val('ys-name'), url: val('ys-url'), username: val('ys-user'), tenant: val('ys-tenant'), client_id: val('ys-client'), settings,
-      writes: val('ys-writes'), extra_origins: val('ys-extra'), login: { user: val('ys-luser'), pass: val('ys-lpass'), submit: val('ys-lsubmit') },
-      ...(val('ys-pass') && { password: document.getElementById('ys-pass').value }) };
-    await api(e.id ? `/systems/${enc(e.id)}` : '/systems', { method: e.id ? 'PUT' : 'POST', body: JSON.stringify(body) });
+    const body = { name: e.name, tenant: val('ys-tenant'), client_id: val('ys-client'), settings, ...(val('ys-pass') && { password: document.getElementById('ys-pass').value }) };
+    await api(`/systems/${enc(e.id)}`, { method: 'PUT', body: JSON.stringify(body) });
     toast(`Saved ${body.name}`, 'ok');
     await openSystems();
   }
@@ -951,17 +956,9 @@ document.addEventListener('click', async ev => {
   }
   if (act === 'delsys') {
     const e = pv.settings.edit;
-    if (!confirm(e.built_in ? `Clear ${e.name}'s settings, account and secret? It stays on the list, not set up, and nothing can use it until it's set up again.`
-      : `Delete ${e.name}? Series that use it can no longer reach it, and its service account is gone.`)) return;
+    if (!confirm(`Clear ${e.name}'s ids and secret? It stays on the list, not set up, and the skills that use it stop until it's set up again.`)) return;
     await api(`/systems/${enc(e.id)}`, { method: 'DELETE' });
     await openSystems();
-  }
-  if (act === 'approve' || act === 'reject') {
-    const r = pendingReqs().find(r => r.request === el.dataset.req);
-    if (act === 'approve' && !confirm(`Run this in ${r.name}?\n\n${r.description}\n\nThe server signs in with the service account and makes ${r.steps.length} step${r.steps.length > 1 ? 's' : ''} now.`)) return;
-    el.disabled = true;
-    await api(`${instPath()}/${act}`, { method: 'POST', body: JSON.stringify({ request: el.dataset.req }) }).finally(() => { el.disabled = false; });
-    await refresh();
   }
   if (act === 'workspace-settings') await openWorkspaceSettings();
   if (act === 'users') await openUsers();
@@ -996,10 +993,8 @@ document.addEventListener('click', async ev => {
   if (act === 'savesettings') {
     const name = $('#sname').value.trim();
     const visible_to = $('#vis-all').checked ? ['*'] : [...document.querySelectorAll('#pv input.vis:checked')].map(i => i.value);
-    const tools = [...document.querySelectorAll('#pv input.tool:checked')].map(i => i.value);
-    const skills = Object.fromEntries([...document.querySelectorAll('#pv input.skill:checked')].map(i => [i.value,
-      Object.fromEntries([...document.querySelectorAll(`#pv .sk-set[data-skill="${CSS.escape(i.value)}"]`)].map(f => [f.dataset.key, f.value.trim()]))]));
-    await api(seriesPath(cur), { method: 'PUT', body: JSON.stringify({ name, visible_to, tools, skills, archived: pv.settings.archived }) });
+    const skills = [...document.querySelectorAll('#pv input.skill:checked')].map(i => i.value);
+    await api(seriesPath(cur), { method: 'PUT', body: JSON.stringify({ name, visible_to, skills, archived: pv.settings.archived }) });
     pv = null;
     renderPv();
     if (name !== cur.series) return go(cur.workspace, name, cur.label);
@@ -1078,12 +1073,6 @@ $('#pv').addEventListener('change', async e => {
     return syncVisibility();
   }
   if (e.target.matches('input.vis')) return syncVisibility();
-  // Choosing a skill shows its settings and ticks the connections it uses.
-  if (e.target.matches('input.skill')) {
-    e.target.closest('.skill-row').querySelector('.sk-fields').hidden = !e.target.checked;
-    if (e.target.checked) for (const c of e.target.dataset.uses.split(',').filter(Boolean)) { const t = document.querySelector(`#pv input.tool[value="${CSS.escape(c)}"]`); if (t) t.checked = true; }
-    return;
-  }
   if (!e.target.matches('select[data-act=role]')) return;
   await api(`/users/${enc(e.target.dataset.email)}`, { method: 'PUT', body: JSON.stringify({ role: e.target.value }) }).catch(() => {});
   await openUsers();

@@ -1,4 +1,9 @@
 {
- "connections": ["burlington"],
- "settings": []
+ "uses": [],
+ "site": { "hosts": [] },
+ "settings": [
+  { "key": "url", "label": "Address", "hint": "Where the sign-in starts: the Traverse portal's sign-in page" },
+  { "key": "username", "label": "Account", "hint": "The user name the server signs in with" },
+  { "key": "password", "label": "Password", "secret": true }
+ ]
 }

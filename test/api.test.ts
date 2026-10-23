@@ -167,7 +167,7 @@ test('series settings write series.json; a rename moves the folder and rewrites 
   const put = (name: string, body: object) => call('PUT', at(name), JSON.stringify(body));
   assert.equal((await put(monthly, { name: monthly, visible_to: [series] })).status, 200);
   assert.equal((await put(series, { name: series, visible_to: [monthly] })).status, 200);
-  assert.deepEqual(JSON.parse(readFileSync(join(root, 'larkfield', series, 'series.json'), 'utf8')), { visible_to: [monthly], tools: [], skills: { 'e1-automation': {} } });
+  assert.deepEqual(JSON.parse(readFileSync(join(root, 'larkfield', series, 'series.json'), 'utf8')), { visible_to: [monthly], skills: ['e1-automation'] });
   assert.deepEqual((await shown(series)).visible_to, [monthly]);
   assert.deepEqual((await shown(monthly)).reads, [series]);
 
@@ -253,50 +253,46 @@ test('each person sees only the workspaces they own; an admin sees all and can g
   assert.equal((await call('GET', at(series, '2026-08-30'), undefined, b)).status, 404);
 });
 
-test('Tool use always offers E1, DMS and XTS; admins set them up; a series may choose none, or one not set up yet', async () => {
+test('Systems holds the two Microsoft 365 connections, for admins: saved in part, the secret sealed', async () => {
   const b = sessionOf(await login(bob))!;
-  const offered = [['e1', 'E1'], ['dms', 'DMS'], ['xts', 'XTS'], ['m365-mail', 'M365 Mail'], ['m365-files', 'M365 OneDrive'], ['target', 'Target'], ['costco', 'Costco'], ['burlington', 'Burlington']]
-    .map(([id, name]) => ({ id, name, configured: false }));
-  assert.deepEqual(await json('/systems', b), offered, 'anyone signed in sees the connections to choose from');
-  const sys = { name: 'E1', url: 'http://127.0.0.1:9/', username: 'svc', password: 'S3cret!' };
-  assert.equal((await call('PUT', '/systems/e1', JSON.stringify(sys), b)).status, 403);
-  assert.equal((await call('PUT', '/systems/e1', JSON.stringify({ ...sys, password: '' }))).status, 200, 'a built-in system may be saved part done');
-  assert.deepEqual((await json('/systems', b))[0], { id: 'e1', name: 'E1', configured: false }, 'but without a password it is not set up');
-  assert.equal((await call('POST', '/systems', JSON.stringify(sys))).status, 400, 'E1 is built in, so it is set up, not added');
-  const made = await (await call('PUT', '/systems/e1', JSON.stringify(sys))).json();
-  assert.deepEqual([made.id, made.has_password, 'password' in made], ['e1', true, false]);
-  assert.deepEqual((await json('/systems', b))[0], { id: 'e1', name: 'E1', configured: true });
+  assert.equal((await call('GET', '/systems', undefined, b)).status, 403, 'series do not choose connections, so only admins see them');
+  assert.deepEqual((await json('/systems')).map((s: { id: string; configured: boolean }) => [s.id, s.configured]), [['m365-mail', false], ['m365-files', false]]);
+  const app = { tenant: '00000000-0000-0000-0000-000000000001', client_id: '00000000-0000-0000-0000-000000000002', settings: { mailbox: 'ap@demo.test' } };
+  assert.equal((await call('PUT', '/systems/m365-mail', JSON.stringify(app), b)).status, 403);
+  assert.equal((await call('PUT', '/systems/m365-mail', JSON.stringify({ ...app, tenant: 'not-a-guid' }))).status, 400);
+  assert.equal((await call('PUT', '/systems/m365-mail', JSON.stringify(app))).status, 200, 'saved part done, without its secret');
+  assert.equal((await json('/systems'))[0].configured, false);
+  const made = await (await call('PUT', '/systems/m365-mail', JSON.stringify({ ...app, password: 'S3cret!' }))).json();
+  assert.deepEqual([made.id, made.has_password, 'password' in made], ['m365-mail', true, false]);
+  assert.equal((await json('/systems'))[0].configured, true);
   assert.ok(!readFileSync(join(root, '.rf', 'systems.json'), 'utf8').includes('S3cret!'));
-
-  const put = (body: object) => call('PUT', at(series), JSON.stringify({ name: series, visible_to: [], ...body }));
-  assert.equal((await put({ tools: ['nope'] })).status, 400);
-  assert.equal((await put({ tools: ['E1', 'dms'] })).status, 200, 'DMS can be chosen before it is set up');
-  assert.deepEqual((await shown(series)).tools, ['e1', 'dms']);
-  assert.equal((await put({ visible_to: ['*'] })).status, 200);
-  assert.deepEqual([(await shown(series)).tools, (await shown(series)).visible_to], [['e1', 'dms'], ['*']], 'Visibility alone leaves Tool use as it was');
-  assert.equal((await put({ tools: [] })).status, 200, 'none at all is fine');
-  assert.deepEqual((await shown(series)).tools, []);
-  assert.equal((await call('DELETE', '/systems/e1')).status, 200);
-  assert.equal((await json('/systems', b))[0].configured, false, 'clearing E1 leaves it on the list, not set up');
+  assert.notEqual((await call('PUT', '/systems/e1', JSON.stringify({ url: 'http://127.0.0.1:9/' }))).status, 200, 'websites are skills now, not connections');
+  assert.equal((await call('DELETE', '/systems/m365-mail')).status, 200);
+  assert.equal((await json('/systems'))[0].configured, false, 'clearing it leaves it on the list, not set up');
 });
 
-test('Skill use: a series chooses skills and gives each its own settings; one saved before Skill use keeps e1-automation', async () => {
+test('Skill use: admins set skills up once under Skills; a series only chooses which; one saved before Skill use keeps e1-automation', async () => {
   const b = sessionOf(await login(bob))!;
-  const listed = await json('/skills', b);
-  assert.deepEqual(listed.find((s: { id: string }) => s.id === 'kohls-open-ap'), {
-    id: 'kohls-open-ap', name: 'kohls-open-ap', description: listed.find((s: { id: string }) => s.id === 'kohls-open-ap').description,
-    connections: ['m365-mail'], settings: [{ key: 'subject', label: 'Subject contains', hint: 'Words the mail\'s subject always has' }], flows: [],
-  });
-  assert.deepEqual((await shown(series)).skills, { 'e1-automation': {} }, 'as every run loaded it then');
+  const kohls = (list: { id: string }[]) => list.find(s => s.id === 'kohls-open-ap') as Record<string, unknown>;
+  assert.deepEqual(Object.keys(kohls(await json('/skills', b))).sort(), ['configured', 'description', 'id', 'name', 'uses'], 'anyone signed in sees the skills, not their settings');
+  assert.equal((await call('PUT', '/skills/kohls-open-ap', JSON.stringify({ subject: 'Open AP report' }), b)).status, 403);
+  assert.equal((await call('PUT', '/skills/kohls-open-ap', JSON.stringify({ mailbox: 'x' }))).status, 400, 'only the settings the skill declares');
+  const set = await (await call('PUT', '/skills/kohls-open-ap', JSON.stringify({ subject: 'Open AP report' }))).json();
+  assert.deepEqual([set.values, set.configured, set.missing], [{ subject: 'Open AP report' }, false, ['M365 Mail set up under Systems']], 'it reads through M365 Mail, which is not set up');
+  assert.equal((await call('POST', '/skills/kohls-open-ap/test')).status, 409);
+  const site = await (await call('PUT', '/skills/burlington-invoice', JSON.stringify({ url: 'https://burl.test/#/login', username: 'svc', password: 'Burl!pw' }))).json();
+  assert.deepEqual([site.values, site.secrets, site.configured], [{ url: 'https://burl.test/#/login', username: 'svc' }, { password: true }, true], 'a password shows only as saved');
+  assert.ok(!readFileSync(join(root, '.rf', 'skills.json'), 'utf8').includes('Burl!pw'));
+
+  assert.deepEqual((await shown(series)).skills, ['e1-automation'], 'as every run loaded it then');
   const put = (body: object) => call('PUT', at(series), JSON.stringify({ name: series, visible_to: [], ...body }));
-  assert.equal((await put({ skills: { nope: {} } })).status, 400);
-  assert.equal((await put({ skills: { 'kohls-open-ap': { mailbox: 'x' } } })).status, 400, 'only the settings the skill declares');
-  assert.equal((await put({ tools: ['m365-mail'], skills: { 'kohls-open-ap': { subject: 'Open AP report' }, 'costco-ap': {} } })).status, 200, 'a skill may be chosen before its settings are filled in');
-  assert.deepEqual((await shown(series)).skills, { 'kohls-open-ap': { subject: 'Open AP report' }, 'costco-ap': {} });
+  assert.equal((await put({ skills: ['nope'] })).status, 400);
+  assert.equal((await put({ skills: ['kohls-open-ap', 'costco-ap'] })).status, 200, 'a skill may be chosen before it is set up');
+  assert.deepEqual((await shown(series)).skills, ['kohls-open-ap', 'costco-ap']);
   assert.equal((await put({ visible_to: ['*'] })).status, 200);
-  assert.deepEqual(Object.keys((await shown(series)).skills), ['kohls-open-ap', 'costco-ap'], 'Visibility alone leaves Skill use as it was');
-  assert.equal((await put({ skills: {} })).status, 200);
-  assert.deepEqual((await shown(series)).skills, {}, 'none at all, not even e1-automation, once a series has chosen');
+  assert.deepEqual((await shown(series)).skills, ['kohls-open-ap', 'costco-ap'], 'Visibility alone leaves Skill use as it was');
+  assert.equal((await put({ skills: [] })).status, 200);
+  assert.deepEqual((await shown(series)).skills, [], 'none at all, not even e1-automation, once a series has chosen');
 });
 
 test('an admin can disable someone, which ends their sessions and stops their sign-in; the CLI does the same', async () => {

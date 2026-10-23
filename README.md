@@ -9,8 +9,7 @@ Recurring tasks, files in and files out. People drop this period's input files i
 - **Inputs** are uploads, or sources a person points the agent to, such as a database, a mailbox folder or a web API. The agent keeps a frozen copy of what it read, and the tile shows where it came from.
 - **Workspaces hold series,** such as one client's. Each belongs to one person, who alone sees it, besides admins. A workspace or a series can be archived, which hides it until it's restored.
 - **People sign in with Microsoft,** with one button.
-- **Tool use:** a series can let its agent use company systems, such as E1, DMS or XTS, in a browser the server runs, signed in as a service account whose password the agent never sees. Each write waits for a person to approve it. Microsoft 365 mail and OneDrive are connections too, read through apps registered in Entra ID.
-- **Skill use:** a series picks skills, such as fetching JDE A/R aging from OneDrive or Costco's payments from its portal, and gives each its settings.
+- **Skill use:** a series picks skills, such as fetching JDE A/R aging from OneDrive or Costco's payments from its portal. Admins set each up once, with its links and, for a website, the account the server signs in with; the agent never sees the password.
 - **Series can share.** A series can let other series read it, one way.
 - **Everything is files on disk.** Each instance has `upload/` (people's files), `working/` (the agent's), `workspace.json` (what the screen shows) and `log.jsonl` (every event).
 
@@ -51,39 +50,27 @@ People sign in with one button, **Sign in with Microsoft**, and type nothing.
 
 Sessions last 12 hours (`RF_SESSION_HOURS`). The people, the owners and the session key are in `.rf/` in the data root.
 
-## Tool use and Skill use
+## Skill use
 
-A series picks, in its settings, the **connections** its agent may use (Tool use) and the **skills** it may use (Skill use). A connection is how to reach a system, with its credentials; a skill is what to fetch or do there, and how. Choosing none is fine.
+A series picks, in its settings, the **skills** its agent may use; choosing none is fine. A skill is what to fetch or do, and how, whole in a folder `skills/<id>/`, as `e1-automation` is: a `SKILL.md` for the agent, a `skill.json` naming the Microsoft 365 connections it reads through and its settings, and what it runs (scripts, or flows the server runs in the skill's website, with a `signin.ts` where signing in takes more than a name and a password).
 
-| Connection | Kind | The agent uses it with |
-| --- | --- | --- |
-| E1, DMS, XTS, Target, Costco, Burlington | website | `rf browse SYSTEM …`, and `rf browse SYSTEM run SKILL/FLOW` for a skill's fixed steps |
-| M365 OneDrive | Microsoft 365 app | `rf files list\|get` |
-| M365 Mail | Microsoft 365 app | `rf mail find\|save` (its one mailbox) |
-
-Admins set each connection up under **Systems**, at the foot of the sidebar: a website's address and the service account the server signs in as, or a Microsoft 365 app's tenant id, client id and client secret. Until then it can be chosen, but the agent can't use it. Admins can add other websites there too.
-
-- The agent works websites through a browser the server runs (Playwright with Chromium). The server signs in, so the password stays in `.rf/` and the agent never sees it. Target and Costco mail a sign-in code, which the server reads from M365 Mail.
-- Reading is free. A write (saving or submitting anything) is stopped until the agent proposes it and a person approves it from the instance's screen; then the server makes it and keeps a screenshot.
-- By default every request but GET counts as a write. A system that also posts its searches needs its write requests named under Systems, such as `POST */save*`.
-
-Without Docker, the browser needs `node node_modules/playwright/cli.js install chromium` once.
-
-### Skills
-
-A skill is a folder in `skills/`: a `SKILL.md` for the agent, a `skill.json` naming the connections it uses and the settings a series gives it, and what it runs (scripts, or flows the server runs in a website's browser). Ticking a skill ticks its connections; its settings, such as a folder link, are the series' own.
-
-| Skill | Uses | Fetches |
+| Skill | Reads through | Fetches |
 | --- | --- | --- |
 | `jde-ar-aging` | M365 OneDrive | the day's AR aging file of company 450 or 236 from its OneDrive folder |
 | `walmart-paid-history` | M365 OneDrive | the Paid History workbook's rows paid in the last days, a csv per sheet |
 | `kohls-open-ap` | M365 Mail | the Excel attachment of the day's open AP mail |
-| `costco-ap` | Costco | the Vendor Accounting Portal's Payments (last 12 months) and Unpaid Items, as csv |
-| `burlington-invoice` | Burlington | Traverse's Invoice Inquiry for given invoice numbers, as csv |
-| `target-document-search` | Target | Partners Online's Specific Document Search, as csv |
+| `target-document-search` | M365 OneDrive | the day's Specific Document Search export from the Target Input folder |
+| `costco-ap` | its website; M365 Mail for sign-in codes | the Vendor Accounting Portal's Payments (last 12 months) and Unpaid Items, as csv |
+| `burlington-invoice` | its website | Traverse's Invoice Inquiry for given invoice numbers, as csv |
 | `e1-automation` | the e1auto service | see above |
 
-The Microsoft 365 apps read with their own permissions, and the server only ever reads with them: **M365 Mail** needs `Mail.Read` (best limited to its mailbox by an application access policy), **M365 OneDrive** read access to the folders (such as `Sites.Selected` with read). **Test** on each Systems row checks it for real. From a shell, without the model: `node --env-file=.env src/cli.ts DATA_ROOT test SYSTEM`, and `… DATA_ROOT try WORKSPACE/SERIES -- python skills/jde-ar-aging/scripts/fetch.py --company 450` (or `-- rf browse costco run costco-ap/payments`) runs a skill as that series' run would. Set `RF_TODAY` in `.env` to test against a day that has data.
+Admins set things up at the foot of the sidebar, once for every series:
+- **Skills:** each skill's settings, such as a folder link, or for a website its address, account and password. Passwords are sealed in `.rf/` and never shown again, and the agent never sees them. Until a skill is set up a series can choose it, but the agent can't use it.
+- **Systems:** the two Microsoft 365 apps the skills read through, each registered in Entra ID: its tenant id, client id and client secret. The server only ever reads with them: **M365 Mail** needs `Mail.Read` (best limited to its mailbox by an application access policy), **M365 OneDrive** read access to the folders (such as `Sites.Selected` with read).
+
+**Test** on each row checks it for real; a website skill signs in, code and all. A website skill's browser stays on the site's own hosts and makes no write.
+
+From a shell, without the model: `node --env-file=.env src/cli.ts DATA_ROOT test SKILL|CONNECTION`, and `… DATA_ROOT try jde-ar-aging -- python skills/jde-ar-aging/scripts/fetch.py --company 450` (or `try costco-ap -- rf flow costco-ap/payments`) runs a skill as a run with it would. Set `RF_TODAY` in `.env` to test against a day that has data. Without Docker, the browser needs `node node_modules/playwright/cli.js install chromium` once.
 
 To reach it from the internet, run `tailscale funnel --bg 8780`, with Microsoft sign-in configured.
 

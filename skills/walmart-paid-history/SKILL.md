@@ -5,7 +5,7 @@ description: Fetch Walmart Retail Link paid history from the Paid History workbo
 
 # Walmart Retail Link paid history
 
-The Paid History workbook on OneDrive holds a sheet per company, each running to hundreds of thousands of rows. This skill reads it through the **M365 OneDrive** connection and keeps, for each sheet, the rows whose date paid falls in the days up to the day. The workbook link, the sheets, the date column and the number of days are this series' settings (`rf settings walmart-paid-history`).
+The Paid History workbook on OneDrive holds a sheet per company, each running to hundreds of thousands of rows. This skill reads it through the **M365 OneDrive** connection and keeps, for each sheet, the rows whose date paid falls in the days up to the day. The workbook link, the sheets, the date column and the number of days are the skill's settings, set by admins under Skills (`rf settings walmart-paid-history`).
 
 ```bash
 python "$RF_SKILLS/walmart-paid-history/scripts/fetch.py" [--date YYYY-MM-DD]

@@ -5,11 +5,11 @@ description: Fetch Costco's Vendor Accounting Portal reports as csv - Payments f
 
 # Costco Vendor Accounting Portal
 
-Uses the **Costco** connection: the server signs in to Costco's Vendor Hub with its account, reads the sign-in code Costco mails from M365 Mail, and runs this skill's flows in that browser. The portal's address is this series' setting.
+The server signs in to Costco's Vendor Hub with the account in this skill's settings (set by admins under Skills; you never see the password), reads the sign-in code Costco mails from M365 Mail, and runs this skill's flows in that browser.
 
 ```bash
-rf browse costco run costco-ap/payments        # Payments, Last 12 Months -> working/Costco payments last 12 months <today>.csv
-rf browse costco run costco-ap/unpaid-items    # Unpaid Items             -> working/Costco unpaid items <today>.csv
+rf flow costco-ap/payments        # Payments, Last 12 Months -> working/Costco payments last 12 months <today>.csv
+rf flow costco-ap/unpaid-items    # Unpaid Items             -> working/Costco unpaid items <today>.csv
 ```
 
 - Run both in the same run when you need both: they share one sign-in, so Costco mails one code, not two.

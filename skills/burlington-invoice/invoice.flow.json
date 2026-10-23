@@ -1,5 +1,4 @@
 {
- "connection": "burlington",
  "vars": ["invoices"],
  "steps": [
   { "goto": "/#/search/invoice?fnc_invoice_num={invoices}" },

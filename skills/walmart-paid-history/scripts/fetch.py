@@ -35,7 +35,7 @@ def main():
     day, frm = (a.date, '--date') if a.date else (os.environ['RF_TODAY'], 'RF_TODAY') if os.environ.get('RF_TODAY') else (date.today().isoformat(), 'today')
     s = rf('settings', query={'skill': 'walmart-paid-history'})
     if not s.get('file'):
-        sys.exit('this series has no Paid History workbook link set for walmart-paid-history (series settings, Skill use)')
+        sys.exit('walmart-paid-history has no Paid History workbook link set (an admin sets it under Skills)')
     days = max(1, int(s.get('days') or 7))
     start = (date.fromisoformat(day) - timedelta(days=days - 1)).isoformat()
     column, sheets = s.get('date_column') or 'Date Paid', s.get('sheets') or '236, 450'
